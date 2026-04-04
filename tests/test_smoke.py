@@ -2,6 +2,6 @@
 
 
 def test_import():
-    import PACKAGE_NAME  # noqa: F811
+    import model_criticism  # noqa: F811
 
-    assert hasattr(PACKAGE_NAME, "__version__")
+    assert hasattr(model_criticism, "__version__")

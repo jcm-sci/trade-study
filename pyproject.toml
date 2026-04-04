@@ -3,9 +3,9 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "PACKAGE_NAME"
+name = "model-criticism"
 version = "0.0.1"
-description = "DESCRIPTION"
+description = "Observable-based model evaluation, Pareto optimization, and Bayesian stacking"
 authors = [
   { name = "Joshua C. Macdonald", email = "jmacdo16@jh.edu" },
 ]
