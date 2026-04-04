@@ -6,47 +6,53 @@ for all proper scoring rules and calibration diagnostics.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from numpy.typing import NDArray
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
 
 def score(
     metric: str,
     predictions: NDArray[np.floating[Any]],
     truth: NDArray[np.floating[Any]],
-    **kwargs: Any,
+    *,
+    alpha: float | NDArray[np.floating[Any]] | None = None,
+    level: float = 0.95,
 ) -> float:
     """Compute a scalar scoring rule.
 
     Args:
-        metric: One of "crps", "wis", "interval", "energy", "log_score",
+        metric: One of "crps", "wis", "interval", "energy",
             "rmse", "mae", "coverage", "brier".
         predictions: Model predictions (ensemble members, quantiles, etc.).
         truth: Known ground truth values.
-        **kwargs: Metric-specific arguments (e.g. ``alpha`` for interval score,
-            ``level`` for coverage).
+        alpha: Significance level for interval-based scores.
+        level: Nominal coverage level for coverage metric.
 
     Returns:
         Scalar score value.
+
+    Raises:
+        ValueError: If the metric name is not recognized.
     """
-    if metric == "crps":
-        return _crps(predictions, truth)
+    simple = {
+        "crps": _crps,
+        "energy": _energy,
+        "brier": _brier,
+        "rmse": _rmse,
+        "mae": _mae,
+    }
+    if metric in simple:
+        return simple[metric](predictions, truth)
     if metric == "wis":
-        return _wis(predictions, truth, **kwargs)
+        return _wis(predictions, truth, alpha=alpha)
     if metric == "interval":
-        return _interval(predictions, truth, **kwargs)
-    if metric == "rmse":
-        return float(np.sqrt(np.mean((predictions - truth) ** 2)))
-    if metric == "mae":
-        return float(np.mean(np.abs(predictions - truth)))
+        return _interval(predictions, truth, alpha=alpha)
     if metric == "coverage":
-        return _coverage(predictions, truth, **kwargs)
-    if metric == "energy":
-        return _energy(predictions, truth)
-    if metric == "brier":
-        return _brier(predictions, truth)
+        return _coverage(predictions, truth, level=level)
     msg = f"Unknown metric: {metric!r}"
     raise ValueError(msg)
 
@@ -55,7 +61,11 @@ def _crps(
     ensemble: NDArray[np.floating[Any]],
     truth: NDArray[np.floating[Any]],
 ) -> float:
-    """CRPS via scoringrules."""
+    """CRPS via scoringrules.
+
+    Returns:
+        Mean CRPS across observations.
+    """
     import scoringrules as sr  # type: ignore[import-untyped]
 
     return float(np.mean(sr.crps_ensemble(truth, ensemble)))
@@ -64,12 +74,18 @@ def _crps(
 def _wis(
     predictions: NDArray[np.floating[Any]],
     truth: NDArray[np.floating[Any]],
-    **kwargs: Any,
+    *,
+    alpha: float | NDArray[np.floating[Any]] | None = None,
 ) -> float:
-    """Weighted interval score via scoringrules."""
-    import scoringrules as sr  # type: ignore[import-untyped]
+    """Weighted interval score via scoringrules.
 
-    alpha = kwargs.get("alpha", np.array([0.02, 0.05, 0.1, 0.2, 0.5]))
+    Returns:
+        Mean WIS across observations.
+    """
+    import scoringrules as sr
+
+    if alpha is None:
+        alpha = np.array([0.02, 0.05, 0.1, 0.2, 0.5])
     return float(
         np.mean(
             sr.weighted_interval_score(
@@ -85,12 +101,18 @@ def _wis(
 def _interval(
     predictions: NDArray[np.floating[Any]],
     truth: NDArray[np.floating[Any]],
-    **kwargs: Any,
+    *,
+    alpha: float | NDArray[np.floating[Any]] | None = None,
 ) -> float:
-    """Interval score via scoringrules."""
-    import scoringrules as sr  # type: ignore[import-untyped]
+    """Interval score via scoringrules.
 
-    alpha = kwargs.get("alpha", 0.05)
+    Returns:
+        Mean interval score across observations.
+    """
+    import scoringrules as sr
+
+    if alpha is None:
+        alpha = 0.05
     return float(
         np.mean(
             sr.interval_score(truth, predictions[..., 0], predictions[..., 1], alpha),
@@ -101,13 +123,17 @@ def _interval(
 def _coverage(
     predictions: NDArray[np.floating[Any]],
     truth: NDArray[np.floating[Any]],
-    **kwargs: Any,
+    *,
+    level: float = 0.95,
 ) -> float:
-    """Empirical coverage rate at a given nominal level."""
-    level = kwargs.get("level", 0.95)
-    alpha = 1.0 - level
-    lower = np.quantile(predictions, alpha / 2, axis=-1)
-    upper = np.quantile(predictions, 1 - alpha / 2, axis=-1)
+    """Empirical coverage rate at a given nominal level.
+
+    Returns:
+        Fraction of truth values within the predicted interval.
+    """
+    cov_alpha = 1.0 - level
+    lower = np.quantile(predictions, cov_alpha / 2, axis=-1)
+    upper = np.quantile(predictions, 1 - cov_alpha / 2, axis=-1)
     return float(np.mean((truth >= lower) & (truth <= upper)))
 
 
@@ -115,8 +141,12 @@ def _energy(
     ensemble: NDArray[np.floating[Any]],
     truth: NDArray[np.floating[Any]],
 ) -> float:
-    """Energy score via scoringrules."""
-    import scoringrules as sr  # type: ignore[import-untyped]
+    """Energy score via scoringrules.
+
+    Returns:
+        Mean energy score across observations.
+    """
+    import scoringrules as sr
 
     return float(np.mean(sr.energy_score(truth, ensemble)))
 
@@ -125,10 +155,38 @@ def _brier(
     predictions: NDArray[np.floating[Any]],
     truth: NDArray[np.floating[Any]],
 ) -> float:
-    """Brier score via scoringrules."""
-    import scoringrules as sr  # type: ignore[import-untyped]
+    """Brier score via scoringrules.
+
+    Returns:
+        Mean Brier score across observations.
+    """
+    import scoringrules as sr
 
     return float(np.mean(sr.brier_score(truth, predictions)))
+
+
+def _rmse(
+    predictions: NDArray[np.floating[Any]],
+    truth: NDArray[np.floating[Any]],
+) -> float:
+    """Root mean squared error.
+
+    Returns:
+        RMSE value.
+    """
+    return float(np.sqrt(np.mean((predictions - truth) ** 2)))
+
+
+def _mae(
+    predictions: NDArray[np.floating[Any]],
+    truth: NDArray[np.floating[Any]],
+) -> float:
+    """Mean absolute error.
+
+    Returns:
+        MAE value.
+    """
+    return float(np.mean(np.abs(predictions - truth)))
 
 
 def coverage_curve(
@@ -148,7 +206,7 @@ def coverage_curve(
     """
     if levels is None:
         levels = np.linspace(0.05, 0.99, 50)
-    empirical = np.array(
-        [_coverage(posteriors, truth, level=float(lv)) for lv in levels]
-    )
+    empirical = np.array([
+        _coverage(posteriors, truth, level=float(lv)) for lv in levels
+    ])
     return levels, empirical

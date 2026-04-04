@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-import numpy as np
-from numpy.typing import NDArray
+if TYPE_CHECKING:
+    import numpy as np
+    from numpy.typing import NDArray
 
 
 class Tier(Enum):
@@ -113,7 +114,11 @@ class Annotation:
     key: str
 
     def resolve(self, config: dict[str, Any]) -> float:
-        """Resolve the annotation value for a given config."""
+        """Resolve the annotation value for a given config.
+
+        Returns:
+            The resolved annotation value as a float.
+        """
         k = config[self.key]
         if callable(self.lookup):
             return float(self.lookup(k))

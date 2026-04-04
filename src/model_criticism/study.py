@@ -7,21 +7,26 @@ and optionally filters configs for the next phase.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from numpy.typing import NDArray
 
 from .pareto import extract_front, hypervolume, pareto_rank
-from .protocols import (
-    Annotation,
-    ModelWorld,
-    Observable,
-    ResultsTable,
-    Scorer,
-)
 from .runner import run_adaptive, run_grid
 from .stacking import stack_scores
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from numpy.typing import NDArray
+
+    from .protocols import (
+        Annotation,
+        ModelWorld,
+        Observable,
+        ResultsTable,
+        Scorer,
+    )
 
 
 @dataclass
@@ -136,11 +141,19 @@ class Study:
                 carry_grid = None
 
     def results(self, phase: str) -> ResultsTable:
-        """Get results for a specific phase."""
+        """Get results for a specific phase.
+
+        Returns:
+            ResultsTable for the given phase.
+        """
         return self._results[phase]
 
     def front(self, phase: str) -> NDArray[np.intp]:
-        """Get Pareto front indices for a phase."""
+        """Get Pareto front indices for a phase.
+
+        Returns:
+            Integer array of Pareto-optimal row indices.
+        """
         r = self._results[phase]
         dirs = [o.direction for o in self.observables]
         return extract_front(r.scores, dirs)
@@ -150,7 +163,11 @@ class Study:
         phase: str,
         ref_point: NDArray[np.floating[Any]],
     ) -> float:
-        """Compute hypervolume of the Pareto front for a phase."""
+        """Compute hypervolume of the Pareto front for a phase.
+
+        Returns:
+            Hypervolume value.
+        """
         r = self._results[phase]
         dirs = [o.direction for o in self.observables]
         front_idx = extract_front(r.scores, dirs)
@@ -162,12 +179,20 @@ class Study:
         *,
         maximize: bool = False,
     ) -> NDArray[np.floating[Any]]:
-        """Compute score-based stacking weights for a phase."""
+        """Compute score-based stacking weights for a phase.
+
+        Returns:
+            Array of stacking weights.
+        """
         r = self._results[phase]
         return stack_scores(r.scores.T, maximize=maximize)
 
     def summary(self) -> dict[str, dict[str, Any]]:
-        """Per-phase summary: n_trials, n_front, observable ranges."""
+        """Per-phase summary: n_trials, n_front, observable ranges.
+
+        Returns:
+            Dictionary mapping phase names to summary statistics.
+        """
         out: dict[str, dict[str, Any]] = {}
         for name, r in self._results.items():
             dirs = [o.direction for o in self.observables]

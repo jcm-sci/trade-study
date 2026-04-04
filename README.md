@@ -87,10 +87,12 @@ study = Study(
     scorer=MyScorer(),
     observables=[coverage, rank_err, wall_time],
     phases=[
-        Phase("discovery", grid=grid,
-              filter_fn=top_k_pareto_filter(k=20)),
-        Phase("benchmark", grid="carry",  # top-20 from discovery
-              filter_fn=None),
+        Phase("discovery", grid=grid, filter_fn=top_k_pareto_filter(k=20)),
+        Phase(
+            "benchmark",
+            grid="carry",  # top-20 from discovery
+            filter_fn=None,
+        ),
     ],
 )
 study.run(n_jobs=-1)

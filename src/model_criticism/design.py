@@ -8,10 +8,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from itertools import product
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from numpy.typing import NDArray
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from numpy.typing import NDArray
 
 
 class FactorType(Enum):
@@ -39,6 +43,11 @@ class Factor:
     bounds: tuple[float, float] | None = None
 
     def __post_init__(self) -> None:
+        """Validate factor constraints.
+
+        Raises:
+            ValueError: If continuous factor missing bounds.
+        """
         if self.factor_type == FactorType.CONTINUOUS and self.bounds is None:
             msg = f"Continuous factor '{self.name}' requires bounds"
             raise ValueError(msg)
@@ -68,6 +77,9 @@ def build_grid(
 
     Returns:
         List of config dictionaries, one per design point.
+
+    Raises:
+        ValueError: If an unknown design method is specified.
     """
     if method == "full":
         return _full_factorial(factors)
@@ -78,7 +90,14 @@ def build_grid(
 
 
 def _full_factorial(factors: list[Factor]) -> list[dict[str, Any]]:
-    """Full factorial over all factor levels."""
+    """Full factorial over all factor levels.
+
+    Returns:
+        List of config dictionaries, one per design point.
+
+    Raises:
+        ValueError: If a factor has bounds instead of levels.
+    """
     level_lists = []
     for f in factors:
         if f.levels is not None:
@@ -87,7 +106,7 @@ def _full_factorial(factors: list[Factor]) -> list[dict[str, Any]]:
             msg = f"Full factorial requires levels, not bounds, for factor '{f.name}'"
             raise ValueError(msg)
     names = [f.name for f in factors]
-    return [dict(zip(names, combo)) for combo in product(*level_lists)]
+    return [dict(zip(names, combo, strict=True)) for combo in product(*level_lists)]
 
 
 def _latin_hypercube(
@@ -96,7 +115,11 @@ def _latin_hypercube(
     n_samples: int,
     seed: int,
 ) -> list[dict[str, Any]]:
-    """Latin hypercube design via pyDOE3."""
+    """Latin hypercube design via pyDOE3.
+
+    Returns:
+        List of config dictionaries, one per design point.
+    """
     from pyDOE3 import lhs  # type: ignore[import-untyped]
 
     rng = np.random.default_rng(seed)
@@ -119,7 +142,7 @@ def _latin_hypercube(
 
 
 def screen(
-    run_fn: Any,
+    run_fn: Callable[[dict[str, Any]], dict[str, float]],
     factors: list[Factor],
     *,
     method: str = "morris",
@@ -139,6 +162,10 @@ def screen(
     Returns:
         Dictionary mapping observable names to arrays of factor importance
         (mu_star for Morris, S1 for Sobol), one value per factor.
+
+    Raises:
+        NotImplementedError: If method is not "morris".
+        ValueError: If no continuous factors are provided.
     """
     from SALib.analyze import morris as morris_analyze  # type: ignore[import-untyped]
     from SALib.sample import morris as morris_sample  # type: ignore[import-untyped]
@@ -155,14 +182,14 @@ def screen(
     problem: dict[str, Any] = {
         "num_vars": len(continuous),
         "names": [f.name for f in continuous],
-        "bounds": [list(f.bounds) for f in continuous if f.bounds is not None],  # type: ignore[union-attr]
+        "bounds": [list(f.bounds) for f in continuous if f.bounds is not None],
     }
     param_values = morris_sample.sample(problem, n_trajectories, seed=seed)
 
     # Evaluate model at each sample point
     results_by_obs: dict[str, list[float]] = {}
     for row in param_values:
-        cfg = dict(zip(problem["names"], row))
+        cfg = dict(zip(problem["names"], row, strict=True))
         scores = run_fn(cfg)
         for obs_name, val in scores.items():
             results_by_obs.setdefault(obs_name, []).append(val)
@@ -203,5 +230,7 @@ def reduce_factors(
     for arr in importance.values():
         max_importance = np.maximum(max_importance, arr)
 
-    kept = [f for f, imp in zip(continuous, max_importance) if imp >= threshold]
+    kept = [
+        f for f, imp in zip(continuous, max_importance, strict=True) if imp >= threshold
+    ]
     return non_continuous + kept

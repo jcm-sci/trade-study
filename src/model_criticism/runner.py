@@ -7,7 +7,7 @@ Adaptive mode uses optuna for multi-objective Bayesian optimization.
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -21,13 +21,22 @@ from .protocols import (
     TrialResult,
 )
 
+if TYPE_CHECKING:
+    import optuna
+
+    from .design import Factor
+
 
 def _run_single(
     world: ModelWorld,
     scorer: Scorer,
     config: dict[str, Any],
 ) -> TrialResult:
-    """Run a single trial: generate → score → return."""
+    """Run a single trial: generate → score → return.
+
+    Returns:
+        TrialResult with config, scores, and wall time.
+    """
     t0 = time.perf_counter()
     truth, observations = world.generate(config)
     scores = scorer.score(truth, observations, config)
@@ -67,17 +76,17 @@ def run_grid(
         )
 
     obs_names = [o.name for o in observables]
-    score_matrix = np.array(
-        [[r.scores.get(name, np.nan) for name in obs_names] for r in results]
-    )
+    score_matrix = np.array([
+        [r.scores.get(name, np.nan) for name in obs_names] for r in results
+    ])
 
     ann_matrix = None
     ann_names: list[str] = []
     if annotations:
         ann_names = [a.name for a in annotations]
-        ann_matrix = np.array(
-            [[a.resolve(r.config) for a in annotations] for r in results]
-        )
+        ann_matrix = np.array([
+            [a.resolve(r.config) for a in annotations] for r in results
+        ])
 
     return ResultsTable(
         configs=[r.config for r in results],
@@ -92,7 +101,7 @@ def run_grid(
 def run_adaptive(
     world: ModelWorld,
     scorer: Scorer,
-    factors: list[Any],
+    factors: list[Factor],
     observables: list[Observable],
     *,
     n_trials: int = 100,
@@ -111,7 +120,7 @@ def run_adaptive(
     Returns:
         ResultsTable with scored results.
     """
-    import optuna  # type: ignore[import-untyped]
+    import optuna as _optuna
 
     from .design import FactorType
 
@@ -120,27 +129,32 @@ def run_adaptive(
         for o in observables
     ]
 
-    study = optuna.create_study(
+    study = _optuna.create_study(
         directions=directions_str,
-        sampler=optuna.samplers.NSGAIISampler(seed=seed),
+        sampler=_optuna.samplers.NSGAIISampler(seed=seed),
     )
 
     obs_names = [o.name for o in observables]
 
-    def objective(trial: Any) -> tuple[float, ...]:
+    def objective(trial: optuna.trial.Trial) -> tuple[float, ...]:
         config: dict[str, Any] = {}
         for f in factors:
             if f.factor_type == FactorType.CONTINUOUS and f.bounds is not None:
-                config[f.name] = trial.suggest_float(f.name, f.bounds[0], f.bounds[1])
-            elif f.factor_type == FactorType.CATEGORICAL and f.levels is not None:
-                config[f.name] = trial.suggest_categorical(f.name, f.levels)
-            elif f.factor_type == FactorType.DISCRETE and f.levels is not None:
+                config[f.name] = trial.suggest_float(
+                    f.name,
+                    f.bounds[0],
+                    f.bounds[1],
+                )
+            elif f.levels is not None and f.factor_type in {
+                FactorType.CATEGORICAL,
+                FactorType.DISCRETE,
+            }:
                 config[f.name] = trial.suggest_categorical(f.name, f.levels)
         truth, observations = world.generate(config)
         scores = scorer.score(truth, observations, config)
         return tuple(scores.get(name, float("nan")) for name in obs_names)
 
-    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    _optuna.logging.set_verbosity(_optuna.logging.WARNING)
     study.optimize(objective, n_trials=n_trials)
 
     configs = []

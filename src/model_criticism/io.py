@@ -17,6 +17,7 @@ def save_results(results: ResultsTable, path: str | Path) -> None:
     Uses .npz for score arrays and .json for configs/metadata.
 
     Args:
+        results: The ResultsTable to save.
         path: Directory to write into (created if needed).
     """
     p = Path(path)

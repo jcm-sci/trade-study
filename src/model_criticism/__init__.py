@@ -14,7 +14,6 @@ from .protocols import (
 from .study import Phase, Study, top_k_pareto_filter
 
 __all__ = [
-    "__version__",
     "Annotation",
     "Direction",
     "ModelWorld",
@@ -25,5 +24,6 @@ __all__ = [
     "Study",
     "Tier",
     "TrialResult",
+    "__version__",
     "top_k_pareto_filter",
 ]

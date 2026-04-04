@@ -5,12 +5,14 @@ Wraps pymoo for non-dominated sorting and hypervolume computation.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from numpy.typing import NDArray
 
 from .protocols import Direction
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
 
 def extract_front(
@@ -26,18 +28,18 @@ def extract_front(
     Returns:
         Integer array of row indices on the Pareto front.
     """
-    from pymoo.util.nds.non_dominated_sorting import (
-        NonDominatedSorting,  # type: ignore[import-untyped]
+    from pymoo.util.nds.non_dominated_sorting import (  # type: ignore[import-untyped]
+        NonDominatedSorting,
     )
 
     # pymoo assumes minimization; flip maximize objectives
-    F = scores.copy()
+    obj = scores.copy()
     for j, d in enumerate(directions):
         if d == Direction.MAXIMIZE:
-            F[:, j] = -F[:, j]
+            obj[:, j] = -obj[:, j]
 
     nds = NonDominatedSorting()
-    fronts = nds.do(F)
+    fronts = nds.do(obj)
     return np.asarray(fronts[0], dtype=np.intp)
 
 
@@ -55,16 +57,16 @@ def pareto_rank(
         Integer array of ranks, shape (n_trials,).
     """
     from pymoo.util.nds.non_dominated_sorting import (
-        NonDominatedSorting,  # type: ignore[import-untyped]
+        NonDominatedSorting,
     )
 
-    F = scores.copy()
+    obj = scores.copy()
     for j, d in enumerate(directions):
         if d == Direction.MAXIMIZE:
-            F[:, j] = -F[:, j]
+            obj[:, j] = -obj[:, j]
 
     nds = NonDominatedSorting()
-    fronts = nds.do(F)
+    fronts = nds.do(obj)
     ranks = np.empty(len(scores), dtype=np.intp)
     for rank, front in enumerate(fronts):
         ranks[front] = rank
@@ -89,14 +91,14 @@ def hypervolume(
     """
     from pymoo.indicators.hv import HV  # type: ignore[import-untyped]
 
-    F = front.copy()
+    obj = front.copy()
     rp = ref_point.copy()
     if directions is not None:
         for j, d in enumerate(directions):
             if d == Direction.MAXIMIZE:
-                F[:, j] = -F[:, j]
+                obj[:, j] = -obj[:, j]
                 rp[j] = -rp[j]
-    return float(HV(ref_point=rp)(F))
+    return float(HV(ref_point=rp)(obj))
 
 
 def igd_plus(
@@ -116,11 +118,11 @@ def igd_plus(
     """
     from pymoo.indicators.igd_plus import IGDPlus  # type: ignore[import-untyped]
 
-    F = front.copy()
-    R = reference.copy()
+    obj = front.copy()
+    ref = reference.copy()
     if directions is not None:
         for j, d in enumerate(directions):
             if d == Direction.MAXIMIZE:
-                F[:, j] = -F[:, j]
-                R[:, j] = -R[:, j]
-    return float(IGDPlus(R)(F))
+                obj[:, j] = -obj[:, j]
+                ref[:, j] = -ref[:, j]
+    return float(IGDPlus(ref)(obj))

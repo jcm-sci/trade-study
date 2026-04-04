@@ -6,10 +6,12 @@ score-based stacking via scipy (for arbitrary score matrices).
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from numpy.typing import NDArray
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
 
 def stack_bayesian(
@@ -31,7 +33,7 @@ def stack_bayesian(
     import arviz as az  # type: ignore[import-untyped]
 
     result = az.compare(compare_dict, method=method)
-    return dict(zip(result.index, result["weight"]))
+    return dict(zip(result.index, result["weight"], strict=True))
 
 
 def stack_scores(
@@ -91,8 +93,8 @@ def ensemble_predict(
         Weighted average prediction array.
     """
     w = np.asarray(weights, dtype=np.float64)
-    w = w / w.sum()
+    w /= w.sum()
     result = np.zeros_like(predictions[0], dtype=np.float64)
-    for pred, wi in zip(predictions, w):
+    for pred, wi in zip(predictions, w, strict=True):
         result += wi * pred
     return result
