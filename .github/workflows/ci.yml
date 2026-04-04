@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "**/pyproject.toml"
+      - name: Sync environment
+        run: uv sync --extra dev
+      - name: Format check
+        run: uv run ruff format --preview --check src tests
+      - name: Lint
+        run: uv run ruff check --preview src tests
+      - name: Type check (strict)
+        run: uv run mypy --strict src
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "**/pyproject.toml"
+      - name: Sync environment
+        run: uv sync --extra test --python ${{ matrix.python-version }}
+      - name: Run tests
+        run: uv run pytest -q --cov --cov-report=term-missing --cov-fail-under=80
