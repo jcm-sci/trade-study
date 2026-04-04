@@ -23,18 +23,43 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
 ]
-dependencies = []
+dependencies = [
+  "numpy>=1.24",
+]
 
 [project.optional-dependencies]
+scoring = [
+  "scoringrules>=0.8",
+]
+pareto = [
+  "pymoo>=0.6",
+]
+stacking = [
+  "arviz>=1.0",
+  "scipy>=1.10",
+]
+design = [
+  "pyDOE3>=1.5",
+  "SALib>=1.5",
+]
+adaptive = [
+  "optuna>=4.0",
+]
+parallel = [
+  "joblib>=1.3",
+]
+all = [
+  "model-criticism[scoring,pareto,stacking,design,adaptive,parallel]",
+]
 test = [
   "pytest>=8.1",
   "pytest-cov>=6.0",
+  "model-criticism[all]",
 ]
 dev = [
   "mypy>=1.18",
   "ruff>=0.13",
-  "pytest>=8.1",
-  "pytest-cov>=6.0",
+  "model-criticism[test]",
 ]
 
 [tool.setuptools]
