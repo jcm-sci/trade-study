@@ -1,5 +1,7 @@
 # model-criticism
 
+[![jcm-sci](https://img.shields.io/badge/jcm--sci-jcmacdonald.dev-blue)](https://jcmacdonald.dev/software/)
+
 Observable-based model evaluation, Pareto optimization, and Bayesian stacking
 for scientific model criticism.
 
