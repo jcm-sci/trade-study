@@ -1,4 +1,4 @@
-"""Observable-based model evaluation, Pareto optimization, and Bayesian stacking."""
+"""Multi-objective trade-study orchestration: scoring, Pareto optimization, and Bayesian stacking."""
 
 from ._version import __version__
 from .protocols import (

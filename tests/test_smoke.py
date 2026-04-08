@@ -3,6 +3,6 @@
 
 def test_import() -> None:
     """Verify that the package imports and exposes __version__."""
-    import model_criticism
+    import trade_study
 
-    assert hasattr(model_criticism, "__version__")
+    assert hasattr(trade_study, "__version__")

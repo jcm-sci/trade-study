@@ -3,9 +3,9 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "model-criticism"
+name = "trade-study"
 version = "0.0.1"
-description = "Observable-based model evaluation, Pareto optimization, and Bayesian stacking"
+description = "Multi-objective trade-study orchestration: scoring, Pareto optimization, and Bayesian stacking"
 authors = [
   { name = "Joshua C. Macdonald", email = "jmacdo16@jh.edu" },
 ]
@@ -49,17 +49,17 @@ parallel = [
   "joblib>=1.3",
 ]
 all = [
-  "model-criticism[scoring,pareto,stacking,design,adaptive,parallel]",
+  "trade-study[scoring,pareto,stacking,design,adaptive,parallel]",
 ]
 test = [
   "pytest>=8.1",
   "pytest-cov>=6.0",
-  "model-criticism[all]",
+  "trade-study[all]",
 ]
 dev = [
   "mypy>=1.18",
   "ruff>=0.13",
-  "model-criticism[test]",
+  "trade-study[test]",
 ]
 
 [tool.setuptools]
@@ -85,7 +85,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*" = ["ANN201", "D103", "INP001", "S101"]
-"src/model_criticism/protocols.py" = ["ANN401"]
+"src/trade_study/protocols.py" = ["ANN401"]
 
 [tool.ruff.lint.pylint]
 max-args = 7

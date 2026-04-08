@@ -1,1 +1,1 @@
-"""Test suite for model-criticism."""
+"""Test suite for trade-study."""

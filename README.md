@@ -1,17 +1,17 @@
-# model-criticism
+# trade-study
 
 [![jcm-sci](https://img.shields.io/badge/jcm--sci-jcmacdonald.dev-blue)](https://jcmacdonald.dev/software/)
 
-Observable-based model evaluation, Pareto optimization, and Bayesian stacking
-for scientific model criticism.
+Multi-objective trade-study orchestration: scoring, Pareto optimization,
+and Bayesian stacking for scientific model evaluation.
 
 ## Overview
 
-`model-criticism` provides a structured framework for evaluating scientific
+`trade-study` provides a structured framework for evaluating scientific
 simulation models against known ground truth via observable-based scoring,
 multi-objective Pareto optimization, and Bayesian model stacking.
 
-The core pattern (from [MFAI §4–5](https://github.com/jcm-sci/model-criticism)):
+The core pattern (from [MFAI §4–5](https://github.com/jcm-sci/trade-study)):
 
 1. **Model world** — Generate synthetic ground truth with known latent state
 2. **Observe** — Apply a realistic observation model (noise, masks, bias)
@@ -28,7 +28,7 @@ benchmark), where each phase filters configs for the next.
 ## Architecture
 
 ```
-model_criticism/
+trade_study/
 ├── protocols.py    ModelWorld, Scorer, Observable, Annotation, ResultsTable
 ├── design.py       Factor screening (SALib) and grid construction (pyDOE3)
 ├── scoring.py      Proper scoring rules (scoringrules) and calibration
@@ -65,9 +65,9 @@ model_criticism/
 ## Quick Example
 
 ```python
-from model_criticism import Study, Phase, Observable, Tier, Direction
-from model_criticism.study import top_k_pareto_filter
-from model_criticism.design import build_grid, Factor, FactorType
+from trade_study import Study, Phase, Observable, Tier, Direction
+from trade_study.study import top_k_pareto_filter
+from trade_study.design import build_grid, Factor, FactorType
 
 # Define observables
 coverage = Observable("coverage_95", Tier.DIAGNOSTIC, Direction.MAXIMIZE)
@@ -102,13 +102,13 @@ print(study.summary())
 ## Installation
 
 ```bash
-pip install model-criticism[all]
+pip install trade-study[all]
 ```
 
 Or install only the extras you need:
 
 ```bash
-pip install model-criticism[scoring,pareto]  # just scoring + Pareto
+pip install trade-study[scoring,pareto]  # just scoring + Pareto
 ```
 
 | Extra | Packages |
@@ -133,7 +133,7 @@ pip install model-criticism[scoring,pareto]  # just scoring + Pareto
 
 | Package | Description |
 |---------|-------------|
-| [ModelCriticism.jl](https://github.com/jcm-sci/ModelCriticism.jl) | Julia implementation of this same framework |
+| [TradeStudy.jl](https://github.com/jcm-sci/TradeStudy.jl) | Julia implementation of this same framework |
 
 ## Development
 
