@@ -92,6 +92,7 @@ def _wis(
                 truth,
                 predictions[..., 0],
                 predictions[..., 1],
+                predictions[..., 2],
                 alpha,
             ),
         ),
