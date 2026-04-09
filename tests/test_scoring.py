@@ -140,22 +140,15 @@ def test_score_brier_returns_finite_float() -> None:
     assert np.isfinite(result)
 
 
-@pytest.mark.xfail(
-    reason="_wis passes 4 positional args; sr.weighted_interval_score needs 5",
-    raises=TypeError,
-    strict=True,
-)
 def test_score_wis_returns_finite_float() -> None:
-    # _wis passes predictions[..., 0] as median, predictions[..., 1] as lower
-    # to sr.weighted_interval_score(obs, median, lower, upper, alpha)
-    # So predictions needs shape (n_obs, 3): median, lower, upper
+    # predictions shape: (n_obs, 3) — median, lower, upper
     n_obs = 30
     median = RNG.standard_normal(n_obs)
     lower = median - RNG.uniform(1, 3, size=n_obs)
     upper = median + RNG.uniform(1, 3, size=n_obs)
     predictions = np.stack([median, lower, upper], axis=-1)
     truth = RNG.standard_normal(n_obs)
-    result = score("wis", predictions, truth)
+    result = score("wis", predictions, truth, alpha=np.array([0.1]))
     assert isinstance(result, float)
     assert np.isfinite(result)
 
