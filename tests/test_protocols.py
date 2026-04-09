@@ -1,11 +1,13 @@
-"""Tests for Observable, Tier, Direction, and Annotation (issues #1, #3)."""
+"""Tests for protocol types (issues #1, #2, #3)."""
 
 from __future__ import annotations
+
+from typing import Any
 
 import pytest
 
 from trade_study import Direction, Observable, Tier
-from trade_study.protocols import Annotation
+from trade_study.protocols import Annotation, Scorer, Simulator
 
 # -- Tier enum -----------------------------------------------------------------
 
@@ -176,3 +178,85 @@ def test_annotation_resolve_missing_lookup_key() -> None:
     ann = Annotation(name="cost", lookup={"a": 1.0}, key="budget")
     with pytest.raises(KeyError, match="missing"):
         ann.resolve({"budget": "missing"})
+
+
+# -- Simulator protocol --------------------------------------------------------
+
+
+class _ToySimulator:
+    def generate(self, config: dict[str, Any]) -> tuple[Any, Any]:
+        return config["mu"], config["mu"] + 0.1
+
+
+class _BadSimulator:
+    def not_generate(self, config: dict[str, Any]) -> tuple[Any, Any]:
+        return 0.0, 0.0
+
+
+def test_simulator_isinstance_conforming() -> None:
+    assert isinstance(_ToySimulator(), Simulator)
+
+
+def test_simulator_isinstance_non_conforming() -> None:
+    assert not isinstance(_BadSimulator(), Simulator)
+
+
+def test_simulator_generate_returns_tuple() -> None:
+    sim = _ToySimulator()
+    result = sim.generate({"mu": 5.0})
+    assert isinstance(result, tuple)
+    assert len(result) == 2
+
+
+def test_simulator_generate_uses_config() -> None:
+    sim = _ToySimulator()
+    truth, obs = sim.generate({"mu": 3.0})
+    assert truth == pytest.approx(3.0)
+    assert obs == pytest.approx(3.1)
+
+
+# -- Scorer protocol -----------------------------------------------------------
+
+
+class _ToyScorer:
+    def score(
+        self,
+        truth: Any,
+        observations: Any,
+        config: dict[str, Any],
+    ) -> dict[str, float]:
+        return {"error": abs(truth - observations)}
+
+
+class _BadScorer:
+    def evaluate(self, truth: Any) -> float:
+        return 0.0
+
+
+def test_scorer_isinstance_conforming() -> None:
+    assert isinstance(_ToyScorer(), Scorer)
+
+
+def test_scorer_isinstance_non_conforming() -> None:
+    assert not isinstance(_BadScorer(), Scorer)
+
+
+def test_scorer_returns_dict() -> None:
+    s = _ToyScorer()
+    result = s.score(5.0, 5.3, {})
+    assert isinstance(result, dict)
+    assert "error" in result
+
+
+def test_scorer_values_are_float() -> None:
+    s = _ToyScorer()
+    result = s.score(5.0, 5.3, {})
+    assert all(isinstance(v, float) for v in result.values())
+
+
+def test_simulator_and_scorer_end_to_end() -> None:
+    sim = _ToySimulator()
+    scorer = _ToyScorer()
+    truth, obs = sim.generate({"mu": 2.0})
+    scores = scorer.score(truth, obs, {"mu": 2.0})
+    assert scores["error"] == pytest.approx(0.1)
