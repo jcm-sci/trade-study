@@ -1,10 +1,11 @@
-"""Tests for Observable, Tier, and Direction types (issue #1)."""
+"""Tests for Observable, Tier, Direction, and Annotation (issues #1, #3)."""
 
 from __future__ import annotations
 
 import pytest
 
 from trade_study import Direction, Observable, Tier
+from trade_study.protocols import Annotation
 
 # -- Tier enum -----------------------------------------------------------------
 
@@ -132,3 +133,46 @@ def test_observable_duplicate_names_different_tiers() -> None:
     b = Observable("x", Tier.COST, Direction.MINIMIZE)
     assert a != b
     assert len({a, b}) == 2
+
+
+# -- Annotation.resolve -------------------------------------------------------
+
+
+@pytest.fixture
+def cost_lookup() -> dict[str, float]:
+    return {"low": 10.0, "medium": 50.0, "high": 100.0}
+
+
+def test_annotation_resolve_dict_lookup(cost_lookup: dict[str, float]) -> None:
+    ann = Annotation(name="cost", lookup=cost_lookup, key="budget")
+    result = ann.resolve({"budget": "medium"})
+    assert result == pytest.approx(50.0)
+
+
+def test_annotation_resolve_dict_all_keys(cost_lookup: dict[str, float]) -> None:
+    ann = Annotation(name="cost", lookup=cost_lookup, key="level")
+    for key, expected in cost_lookup.items():
+        assert ann.resolve({"level": key}) == expected
+
+
+def test_annotation_resolve_callable() -> None:
+    ann = Annotation(name="scaled", lookup=lambda x: x * 2.5, key="n")
+    assert ann.resolve({"n": 4}) == pytest.approx(10.0)
+
+
+def test_annotation_resolve_callable_returns_float() -> None:
+    ann = Annotation(name="flag", lookup=lambda x: x, key="val")
+    result = ann.resolve({"val": 1})
+    assert isinstance(result, float)
+
+
+def test_annotation_resolve_missing_config_key() -> None:
+    ann = Annotation(name="cost", lookup={"a": 1.0}, key="budget")
+    with pytest.raises(KeyError, match="budget"):
+        ann.resolve({"other_key": "a"})
+
+
+def test_annotation_resolve_missing_lookup_key() -> None:
+    ann = Annotation(name="cost", lookup={"a": 1.0}, key="budget")
+    with pytest.raises(KeyError, match="missing"):
+        ann.resolve({"budget": "missing"})
