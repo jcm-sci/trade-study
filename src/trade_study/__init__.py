@@ -7,10 +7,10 @@ from ._version import __version__
 from .protocols import (
     Annotation,
     Direction,
-    ModelWorld,
     Observable,
     ResultsTable,
     Scorer,
+    Simulator,
     Tier,
     TrialResult,
 )
@@ -19,11 +19,11 @@ from .study import Phase, Study, top_k_pareto_filter
 __all__ = [
     "Annotation",
     "Direction",
-    "ModelWorld",
     "Observable",
     "Phase",
     "ResultsTable",
     "Scorer",
+    "Simulator",
     "Study",
     "Tier",
     "TrialResult",

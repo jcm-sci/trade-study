@@ -14,10 +14,10 @@ import numpy as np
 from .protocols import (
     Annotation,
     Direction,
-    ModelWorld,
     Observable,
     ResultsTable,
     Scorer,
+    Simulator,
     TrialResult,
 )
 
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 
 def _run_single(
-    world: ModelWorld,
+    world: Simulator,
     scorer: Scorer,
     config: dict[str, Any],
 ) -> TrialResult:
@@ -45,7 +45,7 @@ def _run_single(
 
 
 def run_grid(
-    world: ModelWorld,
+    world: Simulator,
     scorer: Scorer,
     grid: list[dict[str, Any]],
     observables: list[Observable],
@@ -56,7 +56,7 @@ def run_grid(
     """Run all configurations in a grid.
 
     Args:
-        world: Model world that generates (truth, observations).
+        world: Simulator that generates (truth, observations).
         scorer: Scorer that evaluates observables.
         grid: List of config dicts to evaluate.
         observables: Observable definitions (for column ordering).
@@ -99,7 +99,7 @@ def run_grid(
 
 
 def run_adaptive(
-    world: ModelWorld,
+    world: Simulator,
     scorer: Scorer,
     factors: list[Factor],
     observables: list[Observable],
@@ -110,7 +110,7 @@ def run_adaptive(
     """Run adaptive multi-objective optimization via optuna.
 
     Args:
-        world: Model world.
+        world: Simulator.
         scorer: Scorer for observables.
         factors: Factor definitions (from design module).
         observables: Observable definitions.
