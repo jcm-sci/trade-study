@@ -22,10 +22,10 @@ if TYPE_CHECKING:
 
     from .protocols import (
         Annotation,
-        ModelWorld,
         Observable,
         ResultsTable,
         Scorer,
+        Simulator,
     )
 
 
@@ -89,7 +89,7 @@ class Study:
     """Multi-phase model criticism study.
 
     Attributes:
-        world: Model world generating (truth, observations).
+        world: Simulator generating (truth, observations).
         scorer: Scorer evaluating observables against truth.
         observables: Observable definitions.
         phases: Ordered list of study phases.
@@ -97,7 +97,7 @@ class Study:
         factors: Factor definitions (needed for adaptive mode).
     """
 
-    world: ModelWorld
+    world: Simulator
     scorer: Scorer
     observables: list[Observable]
     phases: list[Phase]

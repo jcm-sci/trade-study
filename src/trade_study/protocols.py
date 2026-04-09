@@ -43,10 +43,10 @@ class Observable:
 
 
 @runtime_checkable
-class ModelWorld(Protocol):
+class Simulator(Protocol):
     """Protocol for generating ground truth and observations.
 
-    A model world produces (truth, observations) pairs where truth is the
+    A simulator produces (truth, observations) pairs where truth is the
     known latent state and observations are what a real system would see.
     """
 
@@ -76,8 +76,8 @@ class Scorer(Protocol):
         """Score a single trial, returning values for each observable.
 
         Args:
-            truth: Known latent state from the model world.
-            observations: Observed data from the model world.
+            truth: Known latent state from the simulator.
+            observations: Observed data from the simulator.
             config: The configuration that produced this trial.
 
         Returns:
@@ -88,7 +88,7 @@ class Scorer(Protocol):
 
 @dataclass
 class TrialResult:
-    """Result of a single model world trial."""
+    """Result of a single simulation trial."""
 
     config: dict[str, Any]
     scores: dict[str, float]
@@ -100,7 +100,7 @@ class TrialResult:
 class Annotation:
     """External information attached to configurations.
 
-    Used for costs, constraints, or metadata not computed by the model world
+    Used for costs, constraints, or metadata not computed by the simulator
     (e.g. dollar costs from a surveillance costing sheet).
 
     Attributes:

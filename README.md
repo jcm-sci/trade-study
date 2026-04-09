@@ -13,7 +13,7 @@ multi-objective Pareto optimization, and Bayesian model stacking.
 
 The core pattern (from [MFAI §4–5](https://github.com/jcm-sci/trade-study)):
 
-1. **Model world** — Generate synthetic ground truth with known latent state
+1. **Simulate** — Generate synthetic ground truth with known latent state
 2. **Observe** — Apply a realistic observation model (noise, masks, bias)
 3. **Score** — Evaluate structured observables against *known truth* using
    proper scoring rules (not noisy observations)
@@ -29,7 +29,7 @@ benchmark), where each phase filters configs for the next.
 
 ```
 trade_study/
-├── protocols.py    ModelWorld, Scorer, Observable, Annotation, ResultsTable
+├── protocols.py    Simulator, Scorer, Observable, Annotation, ResultsTable
 ├── design.py       Factor screening (SALib) and grid construction (pyDOE3)
 ├── scoring.py      Proper scoring rules (scoringrules) and calibration
 ├── pareto.py       Non-dominated sorting and indicators (pymoo)
@@ -83,7 +83,7 @@ grid = build_grid(factors, method="lhs", n_samples=500)
 
 # Run hierarchical study
 study = Study(
-    world=MyModelWorld(),
+    world=MySimulator(),
     scorer=MyScorer(),
     observables=[coverage, rank_err, wall_time],
     phases=[
