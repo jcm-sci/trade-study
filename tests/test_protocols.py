@@ -1,13 +1,14 @@
-"""Tests for protocol types (issues #1, #2, #3)."""
+"""Tests for protocol types (issues #1, #2, #3, #4)."""
 
 from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
 import pytest
 
 from trade_study import Direction, Observable, Tier
-from trade_study.protocols import Annotation, Scorer, Simulator
+from trade_study.protocols import Annotation, ResultsTable, Scorer, Simulator
 
 # -- Tier enum -----------------------------------------------------------------
 
@@ -260,3 +261,88 @@ def test_simulator_and_scorer_end_to_end() -> None:
     truth, obs = sim.generate({"mu": 2.0})
     scores = scorer.score(truth, obs, {"mu": 2.0})
     assert scores["error"] == pytest.approx(0.1)
+
+
+# -- ResultsTable construction -------------------------------------------------
+
+
+def test_results_table_scores_shape() -> None:
+    rt = ResultsTable(
+        configs=[{"a": 1}, {"a": 2}, {"a": 3}],
+        scores=np.array([[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]]),
+        observable_names=["rmse", "coverage"],
+    )
+    assert rt.scores.shape == (3, 2)
+    assert rt.scores.shape == (len(rt.configs), len(rt.observable_names))
+
+
+def test_results_table_annotations_shape() -> None:
+    rt = ResultsTable(
+        configs=[{"a": 1}, {"a": 2}],
+        scores=np.array([[0.1], [0.2]]),
+        observable_names=["rmse"],
+        annotations=np.array([[10.0, 20.0], [30.0, 40.0]]),
+        annotation_names=["cost", "time"],
+    )
+    assert rt.annotations is not None
+    assert rt.annotations.shape == (2, 2)
+    assert rt.annotations.shape == (len(rt.configs), len(rt.annotation_names))
+
+
+def test_results_table_annotations_default_none() -> None:
+    rt = ResultsTable(
+        configs=[{"a": 1}],
+        scores=np.array([[0.5]]),
+        observable_names=["rmse"],
+    )
+    assert rt.annotations is None
+    assert rt.annotation_names == []
+
+
+def test_results_table_metadata_default_empty() -> None:
+    rt = ResultsTable(
+        configs=[{"a": 1}],
+        scores=np.array([[0.5]]),
+        observable_names=["rmse"],
+    )
+    assert rt.metadata == []
+
+
+def test_results_table_metadata_alignment() -> None:
+    rt = ResultsTable(
+        configs=[{"a": 1}, {"a": 2}],
+        scores=np.array([[0.1], [0.2]]),
+        observable_names=["rmse"],
+        metadata=[{"wall": 0.1}, {"wall": 0.2}],
+    )
+    assert len(rt.metadata) == len(rt.configs)
+
+
+def test_results_table_single_trial() -> None:
+    rt = ResultsTable(
+        configs=[{"x": 42}],
+        scores=np.array([[1.0, 2.0, 3.0]]),
+        observable_names=["a", "b", "c"],
+    )
+    assert rt.scores.shape == (1, 3)
+    assert len(rt.configs) == 1
+
+
+def test_results_table_empty() -> None:
+    rt = ResultsTable(
+        configs=[],
+        scores=np.empty((0, 2)),
+        observable_names=["rmse", "coverage"],
+    )
+    assert rt.scores.shape == (0, 2)
+    assert len(rt.configs) == 0
+
+
+def test_results_table_observable_names_order() -> None:
+    names = ["coverage", "rmse", "wall_time"]
+    rt = ResultsTable(
+        configs=[{"a": 1}],
+        scores=np.array([[0.95, 0.1, 3.2]]),
+        observable_names=names,
+    )
+    assert rt.observable_names == ["coverage", "rmse", "wall_time"]
