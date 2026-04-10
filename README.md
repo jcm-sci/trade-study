@@ -2,14 +2,17 @@
 
 [![jcm-sci](https://img.shields.io/badge/jcm--sci-jcmacdonald.dev-blue)](https://jcmacdonald.dev/software/)
 
-Multi-objective trade-study orchestration: scoring, Pareto optimization,
-and Bayesian stacking for scientific model evaluation.
+Multi-objective design and evaluation: score competing configurations —
+model formulations, solver choices, measurement strategies, or any design
+decision — against known ground truth via scoring, Pareto optimization,
+and Bayesian stacking.
 
 ## Overview
 
-`trade-study` provides a structured framework for evaluating scientific
-simulation models against known ground truth via observable-based scoring,
-multi-objective Pareto optimization, and Bayesian model stacking.
+`trade-study` provides a structured framework for scoring competing
+configurations — model formulations, solver choices, measurement strategies,
+or any design decision — against known ground truth via observable-based
+scoring, multi-objective Pareto optimization, and Bayesian model stacking.
 
 The core pattern (from [MFAI §4–5](https://github.com/jcm-sci/trade-study)):
 
