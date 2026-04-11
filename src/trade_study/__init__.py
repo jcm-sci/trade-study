@@ -11,7 +11,6 @@ from .protocols import (
     ResultsTable,
     Scorer,
     Simulator,
-    Tier,
     TrialResult,
 )
 from .study import Phase, Study, top_k_pareto_filter
@@ -25,7 +24,6 @@ __all__ = [
     "Scorer",
     "Simulator",
     "Study",
-    "Tier",
     "TrialResult",
     "__version__",
     "top_k_pareto_filter",

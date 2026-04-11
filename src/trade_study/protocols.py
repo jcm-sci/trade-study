@@ -11,15 +11,6 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 
-class Tier(Enum):
-    """Observable classification tier (MFAI §4 hierarchy)."""
-
-    EMBEDDED = "embedded"
-    PENALIZED = "penalized"
-    DIAGNOSTIC = "diagnostic"
-    COST = "cost"
-
-
 class Direction(Enum):
     """Optimization direction for an observable."""
 
@@ -33,12 +24,10 @@ class Observable:
 
     Attributes:
         name: Identifier (e.g. "coverage_95", "relWIS", "wall_seconds").
-        tier: Classification in the embedded/penalized/diagnostic/cost hierarchy.
         direction: Whether lower or higher values are better.
     """
 
     name: str
-    tier: Tier
     direction: Direction
 
 
