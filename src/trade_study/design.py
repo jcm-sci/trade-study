@@ -122,9 +122,8 @@ def _latin_hypercube(
     """
     from pyDOE3 import lhs  # type: ignore[import-untyped]
 
-    rng = np.random.default_rng(seed)
     n_factors = len(factors)
-    raw = lhs(n_factors, samples=n_samples, criterion="maximin", random_state=rng)
+    raw = lhs(n_factors, samples=n_samples, criterion="maximin", random_state=seed)
 
     configs: list[dict[str, Any]] = []
     for row in raw:
