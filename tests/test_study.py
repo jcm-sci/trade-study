@@ -1,0 +1,528 @@
+"""Tests for study module (issues #21, #22, #23, #25)."""
+
+from __future__ import annotations
+
+from typing import Any
+
+import numpy as np
+import pytest
+
+from trade_study.design import Factor, FactorType
+from trade_study.protocols import Annotation, Direction, Observable, ResultsTable
+from trade_study.study import Phase, Study, top_k_pareto_filter
+
+# ---------------------------------------------------------------------------
+# Toy implementations (same pattern as test_runner)
+# ---------------------------------------------------------------------------
+
+
+class _ToySimulator:
+    """Simulator that passes config through as truth and observations."""
+
+    def generate(
+        self,
+        config: dict[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Return config as both truth and observations.
+
+        Returns:
+            Tuple of (config, config).
+        """
+        return config, config
+
+
+class _ToyScorer:
+    """Scorer that computes error and cost from config values."""
+
+    def score(
+        self,
+        truth: Any,
+        observations: Any,
+        config: dict[str, Any],
+    ) -> dict[str, float]:
+        """Score: error = |alpha - 0.5|, cost = alpha * 10.
+
+        Returns:
+            Dict with ``error`` and ``cost`` scores.
+        """
+        a = float(config.get("alpha", 0.5))
+        return {"error": abs(a - 0.5), "cost": a * 10.0}
+
+
+@pytest.fixture
+def world() -> _ToySimulator:
+    """Toy simulator fixture.
+
+    Returns:
+        A _ToySimulator instance.
+    """
+    return _ToySimulator()
+
+
+@pytest.fixture
+def scorer() -> _ToyScorer:
+    """Toy scorer fixture.
+
+    Returns:
+        A _ToyScorer instance.
+    """
+    return _ToyScorer()
+
+
+@pytest.fixture
+def observables() -> list[Observable]:
+    """Two observables: error (minimize) and cost (minimize).
+
+    Returns:
+        List of two Observable instances.
+    """
+    return [
+        Observable("error", Direction.MINIMIZE),
+        Observable("cost", Direction.MINIMIZE),
+    ]
+
+
+@pytest.fixture
+def grid() -> list[dict[str, Any]]:
+    """Simple 5-point grid over alpha.
+
+    Returns:
+        List of config dicts.
+    """
+    return [{"alpha": v} for v in [0.0, 0.25, 0.5, 0.75, 1.0]]
+
+
+# ---------------------------------------------------------------------------
+# top_k_pareto_filter (#22)
+# ---------------------------------------------------------------------------
+
+
+def test_top_k_pareto_filter_returns_callable() -> None:
+    fn = top_k_pareto_filter(k=3)
+    assert callable(fn)
+
+
+def test_top_k_pareto_filter_keeps_at_most_k(
+    observables: list[Observable],
+) -> None:
+    rt = ResultsTable(
+        configs=[{"alpha": v} for v in [0.0, 0.25, 0.5, 0.75, 1.0]],
+        scores=np.array([
+            [0.5, 0.0],
+            [0.25, 2.5],
+            [0.0, 5.0],
+            [0.25, 7.5],
+            [0.5, 10.0],
+        ]),
+        observable_names=["error", "cost"],
+    )
+    fn = top_k_pareto_filter(k=3)
+    indices = fn(rt, observables)
+    assert len(indices) <= 3
+
+
+def test_top_k_pareto_filter_returns_best_ranks(
+    observables: list[Observable],
+) -> None:
+    # Pareto front: row 0 (error=0.5, cost=0), row 2 (error=0, cost=5)
+    # are non-dominated for minimize/minimize
+    rt = ResultsTable(
+        configs=[{"alpha": v} for v in [0.0, 0.25, 0.5, 0.75, 1.0]],
+        scores=np.array([
+            [0.5, 0.0],
+            [0.25, 2.5],
+            [0.0, 5.0],
+            [0.25, 7.5],
+            [0.5, 10.0],
+        ]),
+        observable_names=["error", "cost"],
+    )
+    fn = top_k_pareto_filter(k=2)
+    indices = fn(rt, observables)
+    # rank-1 configs should be included
+    assert 0 in indices or 2 in indices
+
+
+def test_top_k_pareto_filter_with_objective_subset() -> None:
+    observables = [
+        Observable("error", Direction.MINIMIZE),
+        Observable("cost", Direction.MINIMIZE),
+    ]
+    rt = ResultsTable(
+        configs=[{"a": 1}, {"a": 2}, {"a": 3}],
+        scores=np.array([[1.0, 10.0], [2.0, 5.0], [3.0, 1.0]]),
+        observable_names=["error", "cost"],
+    )
+    fn = top_k_pareto_filter(k=2, objective_names=["error"])
+    indices = fn(rt, observables)
+    assert len(indices) <= 2
+    # When filtering on error only (minimize), row 0 (error=1) is best
+    assert 0 in indices
+
+
+def test_top_k_pareto_filter_k_larger_than_n() -> None:
+    observables = [Observable("m", Direction.MINIMIZE)]
+    rt = ResultsTable(
+        configs=[{"a": 1}, {"a": 2}],
+        scores=np.array([[1.0], [2.0]]),
+        observable_names=["m"],
+    )
+    fn = top_k_pareto_filter(k=10)
+    indices = fn(rt, observables)
+    assert len(indices) == 2
+
+
+# ---------------------------------------------------------------------------
+# Phase chaining with filter_fn (#21)
+# ---------------------------------------------------------------------------
+
+
+def test_phase_chaining_two_phases(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    grid: list[dict[str, Any]],
+    observables: list[Observable],
+) -> None:
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=observables,
+        phases=[
+            Phase(
+                name="discovery",
+                grid=grid,
+                filter_fn=top_k_pareto_filter(k=3),
+            ),
+            Phase(name="refinement", grid="previous"),
+        ],
+    )
+    study.run()
+    disc = study.results("discovery")
+    ref = study.results("refinement")
+    assert len(disc.configs) == 5
+    assert len(ref.configs) <= 3
+
+
+def test_phase_chaining_carry_grid(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    observables: list[Observable],
+) -> None:
+    """Second phase with non-list grid uses filtered configs from first."""
+    grid = [{"alpha": v} for v in [0.0, 0.25, 0.5, 0.75, 1.0]]
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=observables,
+        phases=[
+            Phase(
+                name="phase1",
+                grid=grid,
+                filter_fn=top_k_pareto_filter(k=2),
+            ),
+            Phase(name="phase2", grid="previous"),
+        ],
+    )
+    study.run()
+    p2 = study.results("phase2")
+    # Phase2 re-evaluates the filtered configs
+    assert len(p2.configs) == 2
+
+
+def test_phase_chaining_terminal_phase(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    grid: list[dict[str, Any]],
+    observables: list[Observable],
+) -> None:
+    """Terminal phase (filter_fn=None) does not carry configs."""
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=observables,
+        phases=[Phase(name="only", grid=grid)],
+    )
+    study.run()
+    r = study.results("only")
+    assert len(r.configs) == 5
+
+
+def test_phase_chaining_with_annotations(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    observables: list[Observable],
+) -> None:
+    grid = [
+        {"alpha": 0.1, "method": "a"},
+        {"alpha": 0.5, "method": "b"},
+        {"alpha": 0.9, "method": "a"},
+    ]
+    annotations = [
+        Annotation(name="method_cost", lookup={"a": 10.0, "b": 20.0}, key="method"),
+    ]
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=observables,
+        phases=[Phase(name="p1", grid=grid)],
+        annotations=annotations,
+    )
+    study.run()
+    r = study.results("p1")
+    assert r.annotations is not None
+    assert r.annotations.shape == (3, 1)
+
+
+def test_phase_chaining_scores_correct(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    observables: list[Observable],
+) -> None:
+    grid = [{"alpha": 0.5}]
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=observables,
+        phases=[Phase(name="exact", grid=grid)],
+    )
+    study.run()
+    r = study.results("exact")
+    assert r.scores[0, 0] == pytest.approx(0.0)  # error = |0.5 - 0.5|
+    assert r.scores[0, 1] == pytest.approx(5.0)  # cost = 0.5 * 10
+
+
+# ---------------------------------------------------------------------------
+# Study.summary() (#23)
+# ---------------------------------------------------------------------------
+
+
+def test_summary_keys(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    grid: list[dict[str, Any]],
+    observables: list[Observable],
+) -> None:
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=observables,
+        phases=[Phase(name="p1", grid=grid)],
+    )
+    study.run()
+    s = study.summary()
+    assert "p1" in s
+    assert set(s["p1"].keys()) == {"n_trials", "n_front", "observable_ranges"}
+
+
+def test_summary_n_trials(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    grid: list[dict[str, Any]],
+    observables: list[Observable],
+) -> None:
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=observables,
+        phases=[Phase(name="p1", grid=grid)],
+    )
+    study.run()
+    s = study.summary()
+    assert s["p1"]["n_trials"] == 5
+
+
+def test_summary_observable_ranges(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    grid: list[dict[str, Any]],
+    observables: list[Observable],
+) -> None:
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=observables,
+        phases=[Phase(name="p1", grid=grid)],
+    )
+    study.run()
+    s = study.summary()
+    ranges = s["p1"]["observable_ranges"]
+    assert "error" in ranges
+    assert "cost" in ranges
+    assert ranges["error"]["min"] == pytest.approx(0.0)
+    assert ranges["error"]["max"] == pytest.approx(0.5)
+    assert ranges["cost"]["min"] == pytest.approx(0.0)
+    assert ranges["cost"]["max"] == pytest.approx(10.0)
+
+
+def test_summary_n_front(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    grid: list[dict[str, Any]],
+    observables: list[Observable],
+) -> None:
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=observables,
+        phases=[Phase(name="p1", grid=grid)],
+    )
+    study.run()
+    s = study.summary()
+    assert s["p1"]["n_front"] >= 1
+
+
+def test_summary_multi_phase(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    grid: list[dict[str, Any]],
+    observables: list[Observable],
+) -> None:
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=observables,
+        phases=[
+            Phase(
+                name="disc",
+                grid=grid,
+                filter_fn=top_k_pareto_filter(k=3),
+            ),
+            Phase(name="refine", grid="previous"),
+        ],
+    )
+    study.run()
+    s = study.summary()
+    assert "disc" in s
+    assert "refine" in s
+    assert s["refine"]["n_trials"] <= 3
+
+
+# ---------------------------------------------------------------------------
+# Study.front / Study.front_hypervolume / Study.stack
+# ---------------------------------------------------------------------------
+
+
+def test_front_returns_indices(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    grid: list[dict[str, Any]],
+    observables: list[Observable],
+) -> None:
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=observables,
+        phases=[Phase(name="p1", grid=grid)],
+    )
+    study.run()
+    front_idx = study.front("p1")
+    assert front_idx.dtype == np.intp
+    assert len(front_idx) >= 1
+    assert all(0 <= i < 5 for i in front_idx)
+
+
+def test_front_hypervolume_positive(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    grid: list[dict[str, Any]],
+    observables: list[Observable],
+) -> None:
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=observables,
+        phases=[Phase(name="p1", grid=grid)],
+    )
+    study.run()
+    ref = np.array([1.0, 20.0])
+    hv = study.front_hypervolume("p1", ref)
+    assert hv > 0.0
+
+
+def test_stack_returns_weights(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    grid: list[dict[str, Any]],
+    observables: list[Observable],
+) -> None:
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=observables,
+        phases=[Phase(name="p1", grid=grid)],
+    )
+    study.run()
+    weights = study.stack("p1")
+    # stack_scores treats scores.T as (n_observables, n_configs)
+    assert weights.shape == (2,)
+    assert np.sum(weights) == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# Study.run() with adaptive phase (#25)
+# ---------------------------------------------------------------------------
+
+
+def test_adaptive_phase(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    observables: list[Observable],
+) -> None:
+    factors = [Factor("alpha", FactorType.CONTINUOUS, bounds=(0.0, 1.0))]
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=observables,
+        phases=[Phase(name="adaptive", grid="adaptive", n_trials=15)],
+        factors=factors,
+    )
+    study.run()
+    r = study.results("adaptive")
+    assert len(r.configs) == 15
+    assert r.scores.shape == (15, 2)
+
+
+def test_adaptive_then_grid_phase(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    observables: list[Observable],
+) -> None:
+    factors = [Factor("alpha", FactorType.CONTINUOUS, bounds=(0.0, 1.0))]
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=observables,
+        phases=[
+            Phase(
+                name="explore",
+                grid="adaptive",
+                n_trials=10,
+                filter_fn=top_k_pareto_filter(k=5),
+            ),
+            Phase(name="refine", grid="previous"),
+        ],
+        factors=factors,
+    )
+    study.run()
+    explore_r = study.results("explore")
+    refine_r = study.results("refine")
+    assert len(explore_r.configs) == 10
+    assert len(refine_r.configs) <= 5
+
+
+def test_adaptive_summary(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    observables: list[Observable],
+) -> None:
+    factors = [Factor("alpha", FactorType.CONTINUOUS, bounds=(0.0, 1.0))]
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=observables,
+        phases=[Phase(name="a", grid="adaptive", n_trials=10)],
+        factors=factors,
+    )
+    study.run()
+    s = study.summary()
+    assert s["a"]["n_trials"] == 10
