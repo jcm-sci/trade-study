@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from .pareto import extract_front, hypervolume, pareto_rank
+from ._pareto import extract_front, hypervolume, pareto_rank
 from .runner import run_adaptive, run_grid
 from .stacking import stack_scores
 

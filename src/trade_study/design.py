@@ -135,7 +135,7 @@ def _latin_hypercube(
     from pyDOE3 import lhs  # type: ignore[import-untyped]
 
     n_factors = len(factors)
-    raw = lhs(n_factors, samples=n_samples, criterion="maximin", random_state=seed)
+    raw = lhs(n_factors, samples=n_samples, criterion="maximin", seed=seed)
 
     configs: list[dict[str, Any]] = []
     for row in raw:
