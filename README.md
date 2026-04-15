@@ -1,108 +1,119 @@
 # trade-study
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![jcm-sci](https://img.shields.io/badge/jcm--sci-jcmacdonald.dev-blue)](https://jcmacdonald.dev/software/)
 
-Multi-objective design-of-experiments framework: generate parameter
-grids, score competing configurations against multiple objectives,
-extract Pareto fronts, and combine results via stacking — for any
-domain where you compare alternatives.
+Multi-objective trade-study orchestration: define factors, build
+parameter grids, run hierarchical study phases, and extract Pareto
+fronts — for any domain where you compare alternatives against
+competing objectives.
 
-## Overview
+## Statement of need
 
-`trade-study` is a domain-agnostic framework for multi-objective
-configuration comparison.  It works anywhere you need to evaluate
-design alternatives against several objectives at once — scientific
-simulation, ML hyperparameter tuning, engineering trade-offs, or
-business decision analysis.
+Comparing design alternatives against multiple objectives is a common
+task across scientific simulation, engineering trade-offs, and ML
+hyperparameter tuning. Researchers typically glue together separate
+tools for grid construction, execution, scoring, and Pareto analysis,
+writing ad-hoc scripts that are hard to reproduce or extend to
+multi-phase studies (screening → refinement → benchmark).
 
-The core workflow:
+`trade-study` provides a single orchestration layer that composes these
+steps into a reproducible, protocol-driven workflow. Users supply a
+`Simulator` (generates data) and a `Scorer` (evaluates it); the
+framework handles grid construction, parallel execution, Pareto
+extraction, and phase chaining. All components are modular and
+optional — use only what you need.
 
-1. **Design** — Build a parameter grid (full factorial, LHS, Sobol, Halton)
-   or let an adaptive optimizer propose configs
-2. **Evaluate** — Run each configuration through a user-supplied
-   `Simulator` / `Scorer` protocol pair
-3. **Score** — Compute per-config metrics (proper scoring rules, custom
-   losses, KPIs — whatever your domain requires)
-4. **Pareto** — Extract the non-dominated front across competing
-   objectives (e.g. quality vs. cost)
-5. **Stack** — Combine configurations via score-based or Bayesian
-   stacking weights
+This package targets researchers and practitioners who need:
 
-Studies can be organized into **hierarchical phases** (screening →
-refinement → benchmark), where each phase filters configs for the next.
+- structured multi-phase experimental design (screen → refine → benchmark),
+- multi-objective Pareto analysis across heterogeneous factors, and
+- a reproducible Python API that separates domain logic from study orchestration.
 
-## Architecture
+## Why trade-study?
 
-```
-trade_study/
-├── protocols.py    Simulator & Scorer protocols, Observable, ResultsTable
-├── design.py       Factor screening (SALib) and grid construction (pyDOE3/scipy)
-├── scoring.py      Proper scoring rules (scoringrules) and common metrics
-├── pareto.py       Non-dominated sorting and indicators (pymoo)
-├── stacking.py     Score-based weights (scipy) and Bayesian stacking (arviz)
-├── runner.py       Grid execution (joblib) and adaptive search (optuna)
-├── study.py        Multi-phase orchestration with filtering
-└── io.py           Save/load results (npz + JSON)
-```
+| Need | Without trade-study | With trade-study |
+|------|---------------------|------------------|
+| Parameter grid | Manual `itertools.product` or one-off scripts | `build_grid(factors, method="sobol")` — full factorial, LHS, Sobol, Halton |
+| Multi-objective ranking | Call pymoo directly, handle direction normalization | `extract_front(scores, directions)` — direction-aware |
+| Phased studies | Custom loop with manual filtering between stages | `Study(phases=[Phase(..., filter_fn=top_k_pareto_filter(k=20)), ...])` |
+| Adaptive search | Set up optuna study from scratch | `run_adaptive(world, scorer, factors, observables, n_trials=600)` |
+| Reproducibility | Scattered scripts, no standard protocol | `Simulator` / `Scorer` protocols + `save_results()` / `load_results()` |
 
-### Observable Hierarchy
+Existing tools solve pieces of this problem — [optuna](https://optuna.org/) for adaptive optimization, [pymoo](https://pymoo.org/) for multi-objective solvers, [SALib](https://salib.readthedocs.io/) for sensitivity analysis — but none provide the **hierarchical phase orchestration** that connects them into a single study.
 
-| Tier | Role | Examples |
-|------|------|---------|
-| **Embedded** | Must hold by construction | Monotonicity, conservation laws, schema validity |
-| **Penalized** | Soft constraints in objective | Convergence rate, latency budget, error threshold |
-| **Diagnostic** | Post-hoc evaluation only | RMSE, coverage, CRPS, F1, rank error |
-| **Cost** | Resource axis for Pareto | Wall time, dollar cost, memory, API calls |
-
-### Two Execution Modes
-
-- **Grid mode**: Full factorial, LHS, Sobol, or Halton via pyDOE3/scipy →
-  run all → post-hoc Pareto extraction via pymoo.
-- **Adaptive mode**: Multi-objective Bayesian optimization via optuna NSGA-II
-  when the full grid is too expensive.
-
-### Stacking: Two Paths
-
-- **Score-based** (scipy): For arbitrary score matrices. Optimizes simplex
-  weights to minimize/maximize composite score. Works with any metric.
-- **Bayesian** (arviz): For models with log-likelihoods. Implements Yao et al.
-  2018 stacking via `arviz.compare(method='stacking')`.
-
-## Quick Example
+## Quick start
 
 ```python
-from trade_study import Study, Phase, Observable, Tier, Direction
-from trade_study.study import top_k_pareto_filter
-from trade_study.design import build_grid, Factor, FactorType
+from trade_study import (
+    Direction,
+    Factor,
+    FactorType,
+    Observable,
+    Phase,
+    Study,
+    build_grid,
+    top_k_pareto_filter,
+)
 
-# Define objectives
-accuracy = Observable("accuracy", Tier.DIAGNOSTIC, Direction.MAXIMIZE)
-latency = Observable("latency_ms", Tier.PENALIZED, Direction.MINIMIZE)
-cost = Observable("cost_usd", Tier.COST, Direction.MINIMIZE)
+# 1. Define objectives
+accuracy = Observable("accuracy", Direction.MAXIMIZE)
+latency = Observable("latency_ms", Direction.MINIMIZE)
+cost = Observable("cost_usd", Direction.MINIMIZE)
 
-# Build design grid
+# 2. Define factors and build a design grid
 factors = [
     Factor("learning_rate", FactorType.CONTINUOUS, bounds=(1e-4, 1e-1)),
     Factor("backend", FactorType.CATEGORICAL, levels=["A", "B", "C"]),
 ]
 grid = build_grid(factors, method="lhs", n_samples=500)
 
-# Run hierarchical study
+# 3. Run a hierarchical study
 study = Study(
     world=MySimulator(),  # implements Simulator protocol
     scorer=MyScorer(),  # implements Scorer protocol
     observables=[accuracy, latency, cost],
     phases=[
-        Phase("screening", grid=grid, filter_fn=top_k_pareto_filter(k=20)),
         Phase(
-            "benchmark",
-            grid="carry",  # top-20 from screening
-            filter_fn=None,
+            "screening",
+            grid=grid,
+            filter_fn=top_k_pareto_filter(k=20),
         ),
+        Phase("benchmark", grid="carry", filter_fn=None),
     ],
 )
 study.run(n_jobs=-1)
+
+# 4. Inspect results
 print(study.summary())
+front = study.front()  # non-dominated configs
+hv = study.front_hypervolume(ref=...)  # hypervolume indicator
+```
+
+### Protocols
+
+Users implement two protocols to plug in their domain:
+
+```python
+from trade_study import Scorer, Simulator
+
+
+class MySimulator:
+    """Implements the Simulator protocol."""
+
+    def generate(self, config: dict) -> tuple:
+        """Return (truth, observations) for a given config."""
+        ...
+
+
+class MyScorer:
+    """Implements the Scorer protocol."""
+
+    def score(self, truth, observations, config: dict) -> dict[str, float]:
+        """Return {observable_name: value} for a single trial."""
+        ...
 ```
 
 ## Installation
@@ -114,37 +125,91 @@ pip install trade-study[all]
 Or install only the extras you need:
 
 ```bash
-pip install trade-study[scoring,pareto]  # just scoring + Pareto
+pip install trade-study[design,pareto]
 ```
 
-| Extra | Packages |
-|-------|----------|
-| `scoring` | [scoringrules](https://github.com/frazane/scoringrules) |
-| `pareto` | [pymoo](https://pymoo.org/) |
-| `stacking` | [arviz](https://github.com/arviz-devs/arviz), scipy |
-| `design` | [pyDOE3](https://github.com/relf/pyDOE3), [SALib](https://github.com/SALib/SALib), [scipy](https://scipy.org/) |
-| `adaptive` | [optuna](https://optuna.org/) |
-| `parallel` | joblib |
-| `all` | All of the above |
+| Extra | Packages | Purpose |
+|-------|----------|---------|
+| `design` | [pyDOE3](https://github.com/relf/pyDOE3), [SALib](https://github.com/SALib/SALib), [scipy](https://scipy.org/) | Grid construction and sensitivity screening |
+| `pareto` | [pymoo](https://pymoo.org/) | Non-dominated sorting and indicators |
+| `scoring` | [scoringrules](https://github.com/frazane/scoringrules) | Proper scoring rules (CRPS, WIS, etc.) |
+| `stacking` | [arviz](https://github.com/arviz-devs/arviz), scipy | Bayesian and score-based ensemble weights |
+| `adaptive` | [optuna](https://optuna.org/) | Multi-objective Bayesian optimization |
+| `parallel` | joblib | Parallel grid execution |
+| `all` | All of the above | |
 
-## Consumers
+**Core dependency**: numpy only.
 
-| Package | Domain | Use Case |
-|---------|--------|----------|
-| [VBPCApy](https://github.com/yoavram-lab/VBPCApy) | Bayesian PCA | Convergence sweep: 13-factor grid, coverage/RMSE/CRPS vs. wall time |
-| [pp-eigentest](https://github.com/yoavram-lab/pp-eigentest) | Rank selection | 3-stage method selection: type-I/power/exact vs. robustness |
+## API overview
 
-## Related Packages
+### Design
+
+```python
+from trade_study import Factor, FactorType, build_grid, screen
+
+factors = [
+    Factor("x", FactorType.CONTINUOUS, bounds=(0.0, 1.0)),
+    Factor("method", FactorType.CATEGORICAL, levels=["a", "b", "c"]),
+]
+
+grid = build_grid(factors, method="sobol", n_samples=1024)
+si = screen(run_fn, factors, method="morris", n_eval=3000)
+```
+
+### Execution
+
+```python
+from trade_study import run_grid, run_adaptive
+
+# Grid mode: evaluate all configs (optional parallelism)
+results = run_grid(world, scorer, grid, observables, n_jobs=-1)
+
+# Adaptive mode: multi-objective Bayesian optimization (NSGA-II)
+results = run_adaptive(world, scorer, factors, observables, n_trials=600)
+```
+
+### Pareto analysis
+
+```python
+from trade_study import extract_front, hypervolume, pareto_rank
+
+front_mask = extract_front(results.scores, directions)
+ranks = pareto_rank(results.scores, directions)
+hv = hypervolume(results.scores[front_mask], directions, ref=ref_point)
+```
+
+### Stacking
+
+```python
+from trade_study import stack_scores, stack_bayesian, ensemble_predict
+
+weights = stack_scores(score_matrix)  # simplex-constrained optimization
+weights = stack_bayesian(idata_dict)  # arviz stacking (Yao et al. 2018)
+combined = ensemble_predict(predictions, weights)
+```
+
+### I/O
+
+```python
+from trade_study import save_results, load_results
+
+save_results(results, "study_results")
+results = load_results("study_results")
+```
+
+## Related packages
 
 | Package | Description |
 |---------|-------------|
-| [TradeStudy.jl](https://github.com/jcm-sci/TradeStudy.jl) | Julia implementation of this same framework |
+| [TradeStudy.jl](https://github.com/jcm-sci/TradeStudy.jl) | Julia implementation of the same framework |
 
 ## Development
 
 ```bash
 uv sync --extra dev
-just ci
+just ci          # lint → mypy --strict → pytest with coverage
+just format      # auto-format
+just check       # auto-fix lint
 ```
 
 ## License
