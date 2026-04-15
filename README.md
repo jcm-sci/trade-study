@@ -2,41 +2,44 @@
 
 [![jcm-sci](https://img.shields.io/badge/jcm--sci-jcmacdonald.dev-blue)](https://jcmacdonald.dev/software/)
 
-Multi-objective design and evaluation: score competing configurations —
-model formulations, solver choices, measurement strategies, or any design
-decision — against known ground truth via scoring, Pareto optimization,
-and Bayesian stacking.
+Multi-objective design-of-experiments framework: generate parameter
+grids, score competing configurations against multiple objectives,
+extract Pareto fronts, and combine results via stacking — for any
+domain where you compare alternatives.
 
 ## Overview
 
-`trade-study` provides a structured framework for scoring competing
-configurations — model formulations, solver choices, measurement strategies,
-or any design decision — against known ground truth via observable-based
-scoring, multi-objective Pareto optimization, and Bayesian model stacking.
+`trade-study` is a domain-agnostic framework for multi-objective
+configuration comparison.  It works anywhere you need to evaluate
+design alternatives against several objectives at once — scientific
+simulation, ML hyperparameter tuning, engineering trade-offs, or
+business decision analysis.
 
-The core pattern:
+The core workflow:
 
-1. **Simulate** — Generate synthetic ground truth with known latent state
-2. **Observe** — Apply a realistic observation model (noise, masks, bias)
-3. **Score** — Evaluate structured observables against *known truth* using
-   proper scoring rules (not noisy observations)
-4. **Pareto** — Extract the multi-objective Pareto front across competing
+1. **Design** — Build a parameter grid (full factorial, LHS, Sobol, Halton)
+   or let an adaptive optimizer propose configs
+2. **Evaluate** — Run each configuration through a user-supplied
+   `Simulator` / `Scorer` protocol pair
+3. **Score** — Compute per-config metrics (proper scoring rules, custom
+   losses, KPIs — whatever your domain requires)
+4. **Pareto** — Extract the non-dominated front across competing
    objectives (e.g. quality vs. cost)
-5. **Stack** — Combine models via Bayesian stacking weights or score-based
-   optimization
+5. **Stack** — Combine configurations via score-based or Bayesian
+   stacking weights
 
-Studies can be organized into **hierarchical phases** (discovery → refinement →
-benchmark), where each phase filters configs for the next.
+Studies can be organized into **hierarchical phases** (screening →
+refinement → benchmark), where each phase filters configs for the next.
 
 ## Architecture
 
 ```
 trade_study/
-├── protocols.py    Simulator, Scorer, Observable, Annotation, ResultsTable
-├── design.py       Factor screening (SALib) and grid construction (pyDOE3)
-├── scoring.py      Proper scoring rules (scoringrules) and calibration
+├── protocols.py    Simulator & Scorer protocols, Observable, ResultsTable
+├── design.py       Factor screening (SALib) and grid construction (pyDOE3/scipy)
+├── scoring.py      Proper scoring rules (scoringrules) and common metrics
 ├── pareto.py       Non-dominated sorting and indicators (pymoo)
-├── stacking.py     Bayesian stacking (arviz) and score-based weights (scipy)
+├── stacking.py     Score-based weights (scipy) and Bayesian stacking (arviz)
 ├── runner.py       Grid execution (joblib) and adaptive search (optuna)
 ├── study.py        Multi-phase orchestration with filtering
 └── io.py           Save/load results (npz + JSON)
@@ -46,10 +49,10 @@ trade_study/
 
 | Tier | Role | Examples |
 |------|------|---------|
-| **Embedded** | Must hold by construction | ELBO monotonicity, conservation laws |
-| **Penalized** | Soft constraints in objective | Stopping criteria, convergence rate |
-| **Diagnostic** | Post-hoc evaluation only | Coverage, CRPS, PIT, rank error |
-| **Cost** | Resource axis for Pareto | Wall time, dollar cost, field teams |
+| **Embedded** | Must hold by construction | Monotonicity, conservation laws, schema validity |
+| **Penalized** | Soft constraints in objective | Convergence rate, latency budget, error threshold |
+| **Diagnostic** | Post-hoc evaluation only | RMSE, coverage, CRPS, F1, rank error |
+| **Cost** | Resource axis for Pareto | Wall time, dollar cost, memory, API calls |
 
 ### Two Execution Modes
 
@@ -60,10 +63,10 @@ trade_study/
 
 ### Stacking: Two Paths
 
-- **Bayesian** (arviz): For models with log-likelihoods. Implements Yao et al
-  2018 stacking via `arviz.compare(method='stacking')`.
 - **Score-based** (scipy): For arbitrary score matrices. Optimizes simplex
-  weights to minimize/maximize composite score.
+  weights to minimize/maximize composite score. Works with any metric.
+- **Bayesian** (arviz): For models with log-likelihoods. Implements Yao et al.
+  2018 stacking via `arviz.compare(method='stacking')`.
 
 ## Quick Example
 
@@ -72,28 +75,28 @@ from trade_study import Study, Phase, Observable, Tier, Direction
 from trade_study.study import top_k_pareto_filter
 from trade_study.design import build_grid, Factor, FactorType
 
-# Define observables
-coverage = Observable("coverage_95", Tier.DIAGNOSTIC, Direction.MAXIMIZE)
-rank_err = Observable("rank_error", Tier.EMBEDDED, Direction.MINIMIZE)
-wall_time = Observable("wall_seconds", Tier.COST, Direction.MINIMIZE)
+# Define objectives
+accuracy = Observable("accuracy", Tier.DIAGNOSTIC, Direction.MAXIMIZE)
+latency = Observable("latency_ms", Tier.PENALIZED, Direction.MINIMIZE)
+cost = Observable("cost_usd", Tier.COST, Direction.MINIMIZE)
 
 # Build design grid
 factors = [
-    Factor("alpha", FactorType.CONTINUOUS, bounds=(0.01, 0.10)),
-    Factor("method", FactorType.CATEGORICAL, levels=["A", "B", "C"]),
+    Factor("learning_rate", FactorType.CONTINUOUS, bounds=(1e-4, 1e-1)),
+    Factor("backend", FactorType.CATEGORICAL, levels=["A", "B", "C"]),
 ]
 grid = build_grid(factors, method="lhs", n_samples=500)
 
 # Run hierarchical study
 study = Study(
-    world=MySimulator(),
-    scorer=MyScorer(),
-    observables=[coverage, rank_err, wall_time],
+    world=MySimulator(),   # implements Simulator protocol
+    scorer=MyScorer(),     # implements Scorer protocol
+    observables=[accuracy, latency, cost],
     phases=[
-        Phase("discovery", grid=grid, filter_fn=top_k_pareto_filter(k=20)),
+        Phase("screening", grid=grid, filter_fn=top_k_pareto_filter(k=20)),
         Phase(
             "benchmark",
-            grid="carry",  # top-20 from discovery
+            grid="carry",  # top-20 from screening
             filter_fn=None,
         ),
     ],
