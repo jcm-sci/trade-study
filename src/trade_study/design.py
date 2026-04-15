@@ -62,6 +62,7 @@ def build_grid(
     method: str = "full",
     n_samples: int = 100,
     seed: int = 42,
+    scramble: bool = True,
 ) -> list[dict[str, Any]]:
     """Build an experimental design grid.
 
@@ -71,9 +72,12 @@ def build_grid(
             - "full": Full factorial (categorical/discrete only).
             - "lhs": Latin hypercube sampling (continuous factors, maps
               categorical factors to uniform random selection).
-            - "fractional": Fractional factorial via pyDOE3.
-        n_samples: Number of samples for LHS.
+            - "sobol": Scrambled Sobol' sequence via ``scipy.stats.qmc``.
+            - "halton": Scrambled Halton sequence via ``scipy.stats.qmc``.
+        n_samples: Number of samples for LHS / QMC methods.
         seed: Random seed.
+        scramble: Whether to apply scrambling to QMC sequences (Sobol /
+            Halton). Ignored for other methods.
 
     Returns:
         List of config dictionaries, one per design point.
@@ -85,6 +89,14 @@ def build_grid(
         return _full_factorial(factors)
     if method == "lhs":
         return _latin_hypercube(factors, n_samples=n_samples, seed=seed)
+    if method in {"sobol", "halton"}:
+        return _qmc_sample(
+            factors,
+            n_samples=n_samples,
+            seed=seed,
+            qmc_method=method,
+            scramble=scramble,
+        )
     msg = f"Unknown design method: {method!r}"
     raise ValueError(msg)
 
@@ -124,6 +136,51 @@ def _latin_hypercube(
 
     n_factors = len(factors)
     raw = lhs(n_factors, samples=n_samples, criterion="maximin", random_state=seed)
+
+    configs: list[dict[str, Any]] = []
+    for row in raw:
+        cfg: dict[str, Any] = {}
+        for j, f in enumerate(factors):
+            if f.factor_type == FactorType.CONTINUOUS and f.bounds is not None:
+                lo, hi = f.bounds
+                cfg[f.name] = lo + row[j] * (hi - lo)
+            elif f.levels is not None:
+                idx = int(row[j] * len(f.levels))
+                idx = min(idx, len(f.levels) - 1)
+                cfg[f.name] = f.levels[idx]
+        configs.append(cfg)
+    return configs
+
+
+def _qmc_sample(
+    factors: list[Factor],
+    *,
+    n_samples: int,
+    seed: int,
+    qmc_method: str,
+    scramble: bool,
+) -> list[dict[str, Any]]:
+    """Quasi-Monte Carlo design via ``scipy.stats.qmc``.
+
+    Args:
+        factors: List of design factors.
+        n_samples: Number of sample points.
+        seed: Random seed for scrambling.
+        qmc_method: ``"sobol"`` or ``"halton"``.
+        scramble: Whether to apply scrambling.
+
+    Returns:
+        List of config dictionaries, one per design point.
+    """
+    from scipy.stats import qmc  # type: ignore[import-untyped]
+
+    n_factors = len(factors)
+    sampler: qmc.QMCEngine
+    if qmc_method == "sobol":
+        sampler = qmc.Sobol(d=n_factors, scramble=scramble, seed=seed)
+    else:
+        sampler = qmc.Halton(d=n_factors, scramble=scramble, seed=seed)
+    raw = sampler.random(n_samples)
 
     configs: list[dict[str, Any]] = []
     for row in raw:

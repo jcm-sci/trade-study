@@ -150,6 +150,96 @@ def test_build_grid_unknown_method(continuous_factors: list[Factor]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# build_grid — QMC: Sobol & Halton (#44)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("qmc_method", ["sobol", "halton"])
+def test_qmc_sample_count(
+    continuous_factors: list[Factor],
+    qmc_method: str,
+) -> None:
+    grid = build_grid(continuous_factors, method=qmc_method, n_samples=64)
+    assert len(grid) == 64
+
+
+@pytest.mark.parametrize("qmc_method", ["sobol", "halton"])
+def test_qmc_continuous_bounds(
+    continuous_factors: list[Factor],
+    qmc_method: str,
+) -> None:
+    grid = build_grid(continuous_factors, method=qmc_method, n_samples=128)
+    alphas = [cfg["alpha"] for cfg in grid]
+    betas = [cfg["beta"] for cfg in grid]
+    assert all(0.0 <= a <= 1.0 for a in alphas)
+    assert all(10.0 <= b <= 20.0 for b in betas)
+
+
+@pytest.mark.parametrize("qmc_method", ["sobol", "halton"])
+def test_qmc_categorical_in_levels(
+    mixed_factors: list[Factor],
+    qmc_method: str,
+) -> None:
+    grid = build_grid(mixed_factors, method=qmc_method, n_samples=64)
+    colours = {cfg["colour"] for cfg in grid}
+    assert colours <= {"red", "green", "blue"}
+
+
+@pytest.mark.parametrize("qmc_method", ["sobol", "halton"])
+def test_qmc_deterministic_with_seed(
+    continuous_factors: list[Factor],
+    qmc_method: str,
+) -> None:
+    g1 = build_grid(continuous_factors, method=qmc_method, n_samples=32, seed=7)
+    g2 = build_grid(continuous_factors, method=qmc_method, n_samples=32, seed=7)
+    assert g1 == g2
+
+
+@pytest.mark.parametrize("qmc_method", ["sobol", "halton"])
+def test_qmc_different_seeds_differ(
+    continuous_factors: list[Factor],
+    qmc_method: str,
+) -> None:
+    g1 = build_grid(continuous_factors, method=qmc_method, n_samples=32, seed=1)
+    g2 = build_grid(continuous_factors, method=qmc_method, n_samples=32, seed=2)
+    assert g1 != g2
+
+
+def test_qmc_scramble_off(continuous_factors: list[Factor]) -> None:
+    g1 = build_grid(
+        continuous_factors,
+        method="sobol",
+        n_samples=32,
+        scramble=False,
+    )
+    g2 = build_grid(
+        continuous_factors,
+        method="sobol",
+        n_samples=32,
+        scramble=False,
+    )
+    assert g1 == g2
+
+
+def test_qmc_sobol_vs_halton_differ(continuous_factors: list[Factor]) -> None:
+    g_sobol = build_grid(
+        continuous_factors,
+        method="sobol",
+        n_samples=32,
+        seed=0,
+        scramble=False,
+    )
+    g_halton = build_grid(
+        continuous_factors,
+        method="halton",
+        n_samples=32,
+        seed=0,
+        scramble=False,
+    )
+    assert g_sobol != g_halton
+
+
+# ---------------------------------------------------------------------------
 # screen — Morris (#9)
 # ---------------------------------------------------------------------------
 

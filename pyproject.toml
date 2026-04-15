@@ -41,6 +41,7 @@ stacking = [
 design = [
   "pyDOE3>=1.5",
   "SALib>=1.5",
+  "scipy>=1.10",
 ]
 adaptive = [
   "optuna>=4.0",
