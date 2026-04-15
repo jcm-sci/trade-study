@@ -34,8 +34,18 @@ markdown_extensions:
   - pymdownx.inlinehilite
   - pymdownx.snippets:
       base_path: .
+  - pymdownx.arithmatex:
+      generic: true
   - toc:
       permalink: true
+
+extra_javascript:
+  - https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js
+  - https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js
+  - javascripts/katex.js
+
+extra_css:
+  - https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css
 
 plugins:
   - search
