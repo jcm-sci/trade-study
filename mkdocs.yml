@@ -32,6 +32,8 @@ markdown_extensions:
   - pymdownx.highlight:
       anchor_linenums: true
   - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      base_path: .
   - toc:
       permalink: true
 
@@ -49,6 +51,9 @@ plugins:
 
 nav:
   - Home: index.md
+  - User Guide:
+      - Reactor Design (CSTR): guide/cstr.md
+      - Hyperparameter Sweep (sklearn): guide/sklearn.md
   - API Reference:
       - Protocols: api/protocols.md
       - Design: api/design.md
