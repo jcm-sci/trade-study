@@ -55,8 +55,7 @@ build-test:
 	uv venv "$CLEANROOM/venv"
 	source "$CLEANROOM/venv/bin/activate"
 	uv build --wheel --out-dir "$CLEANROOM/dist"
-	uv pip install --no-cache "$CLEANROOM"/dist/*.whl
-	uv pip install pytest
+	uv pip install --no-cache "$CLEANROOM/dist/$(ls "$CLEANROOM/dist/" | grep '\.whl$')[test]"
 	python -m pytest tests -q -x
 	echo "Clean-room test passed."
 
