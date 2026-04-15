@@ -12,13 +12,14 @@ authors = [
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 classifiers = [
   "Development Status :: 2 - Pre-Alpha",
   "Intended Audience :: Science/Research",
   "Topic :: Scientific/Engineering",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
@@ -35,7 +36,8 @@ pareto = [
   "pymoo>=0.6",
 ]
 stacking = [
-  "arviz>=1.0",
+  "arviz>=0.20; python_version < '3.12'",
+  "arviz>=1.0; python_version >= '3.12'",
   "scipy>=1.10",
 ]
 design = [
