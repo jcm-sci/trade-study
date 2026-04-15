@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from trade_study.scoring import coverage_curve, score
+from trade_study import coverage_curve, score
 
 # -- coverage_curve ------------------------------------------------------------
 

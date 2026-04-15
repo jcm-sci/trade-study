@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from trade_study.pareto import extract_front, hypervolume, igd_plus, pareto_rank
+from trade_study import extract_front, hypervolume, igd_plus, pareto_rank
 from trade_study.protocols import Direction
 
 # ---------------------------------------------------------------------------
