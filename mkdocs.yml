@@ -1,0 +1,60 @@
+site_name: trade-study
+site_description: Multi-objective trade-study orchestration
+site_url: https://jcm-sci.github.io/trade-study/
+repo_url: https://github.com/jcm-sci/trade-study
+repo_name: jcm-sci/trade-study
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - content.code.copy
+    - navigation.sections
+    - navigation.expand
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            members_order: source
+            merge_init_into_class: true
+
+nav:
+  - Home: index.md
+  - API Reference:
+      - Protocols: api/protocols.md
+      - Design: api/design.md
+      - Runner: api/runner.md
+      - Study: api/study.md
+      - Scoring: api/scoring.md
+      - Pareto: api/pareto.md
+      - Stacking: api/stacking.md
+      - I/O: api/io.md
