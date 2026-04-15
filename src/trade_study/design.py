@@ -46,14 +46,31 @@ class Factor:
         """Validate factor constraints.
 
         Raises:
-            ValueError: If continuous factor missing bounds.
+            ValueError: If name is empty, continuous factor has missing or
+                invalid bounds, or discrete/categorical factor has empty
+                levels.
         """
-        if self.factor_type == FactorType.CONTINUOUS and self.bounds is None:
-            msg = f"Continuous factor '{self.name}' requires bounds"
+        if not self.name:
+            msg = "Factor name must be a non-empty string"
             raise ValueError(msg)
-        if self.factor_type != FactorType.CONTINUOUS and self.levels is None:
-            msg = f"Factor '{self.name}' of type {self.factor_type} requires levels"
-            raise ValueError(msg)
+        if self.factor_type == FactorType.CONTINUOUS:
+            if self.bounds is None:
+                msg = f"Continuous factor '{self.name}' requires bounds"
+                raise ValueError(msg)
+            lo, hi = self.bounds
+            if not (np.isfinite(lo) and np.isfinite(hi)):
+                msg = f"Continuous factor '{self.name}' bounds must be finite"
+                raise ValueError(msg)
+            if lo >= hi:
+                msg = f"Continuous factor '{self.name}' requires lo < hi"
+                raise ValueError(msg)
+        else:
+            if self.levels is None:
+                msg = f"Factor '{self.name}' of type {self.factor_type} requires levels"
+                raise ValueError(msg)
+            if len(self.levels) == 0:
+                msg = f"Factor '{self.name}' levels must be non-empty"
+                raise ValueError(msg)
 
 
 def build_grid(
