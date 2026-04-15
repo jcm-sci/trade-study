@@ -59,10 +59,14 @@ test = [
   "pytest-cov>=6.0",
   "trade-study[all]",
 ]
+docs = [
+  "mkdocs-material>=9.5",
+  "mkdocstrings[python]>=0.27",
+]
 dev = [
   "mypy>=1.18",
   "ruff>=0.13",
-  "trade-study[test]",
+  "trade-study[test,docs]",
 ]
 
 [tool.setuptools]

@@ -9,4 +9,5 @@ build/
 .ruff_cache/
 .coverage
 *.so
+site/
 uv.lock
