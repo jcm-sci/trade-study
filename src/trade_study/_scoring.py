@@ -149,7 +149,7 @@ def _energy(
     """
     import scoringrules as sr
 
-    return float(np.mean(sr.energy_score(truth, ensemble)))
+    return float(np.mean(sr.es_ensemble(truth, ensemble)))
 
 
 def _brier(
