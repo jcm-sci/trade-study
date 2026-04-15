@@ -89,8 +89,8 @@ grid = build_grid(factors, method="lhs", n_samples=500)
 
 # Run hierarchical study
 study = Study(
-    world=MySimulator(),   # implements Simulator protocol
-    scorer=MyScorer(),     # implements Scorer protocol
+    world=MySimulator(),  # implements Simulator protocol
+    scorer=MyScorer(),  # implements Scorer protocol
     observables=[accuracy, latency, cost],
     phases=[
         Phase("screening", grid=grid, filter_fn=top_k_pareto_filter(k=20)),
