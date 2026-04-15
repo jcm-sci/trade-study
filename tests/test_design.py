@@ -73,6 +73,36 @@ def test_discrete_factor_requires_levels() -> None:
         Factor("x", FactorType.DISCRETE)
 
 
+def test_factor_empty_name() -> None:
+    """Empty factor name is rejected."""
+    with pytest.raises(ValueError, match="non-empty string"):
+        Factor("", FactorType.CATEGORICAL, levels=["a"])
+
+
+def test_factor_empty_levels() -> None:
+    """Empty levels list is rejected for categorical and discrete."""
+    with pytest.raises(ValueError, match="non-empty"):
+        Factor("x", FactorType.CATEGORICAL, levels=[])
+    with pytest.raises(ValueError, match="non-empty"):
+        Factor("x", FactorType.DISCRETE, levels=[])
+
+
+def test_factor_inverted_bounds() -> None:
+    """Inverted or equal bounds are rejected for continuous factors."""
+    with pytest.raises(ValueError, match="lo < hi"):
+        Factor("x", FactorType.CONTINUOUS, bounds=(10.0, 1.0))
+    with pytest.raises(ValueError, match="lo < hi"):
+        Factor("x", FactorType.CONTINUOUS, bounds=(5.0, 5.0))
+
+
+def test_factor_nonfinite_bounds() -> None:
+    """NaN and inf bounds are rejected for continuous factors."""
+    with pytest.raises(ValueError, match="finite"):
+        Factor("x", FactorType.CONTINUOUS, bounds=(float("nan"), 1.0))
+    with pytest.raises(ValueError, match="finite"):
+        Factor("x", FactorType.CONTINUOUS, bounds=(0.0, float("inf")))
+
+
 # ---------------------------------------------------------------------------
 # build_grid — full factorial (#8)
 # ---------------------------------------------------------------------------
