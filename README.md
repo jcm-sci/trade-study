@@ -14,7 +14,7 @@ configurations — model formulations, solver choices, measurement strategies,
 or any design decision — against known ground truth via observable-based
 scoring, multi-objective Pareto optimization, and Bayesian model stacking.
 
-The core pattern (from [MFAI §4–5](https://github.com/jcm-sci/trade-study)):
+The core pattern:
 
 1. **Simulate** — Generate synthetic ground truth with known latent state
 2. **Observe** — Apply a realistic observation model (noise, masks, bias)
@@ -42,7 +42,7 @@ trade_study/
 └── io.py           Save/load results (npz + JSON)
 ```
 
-### Observable Hierarchy (MFAI §4)
+### Observable Hierarchy
 
 | Tier | Role | Examples |
 |------|------|---------|
@@ -53,7 +53,7 @@ trade_study/
 
 ### Two Execution Modes
 
-- **Grid mode**: Full factorial, LHS, or fractional factorial via pyDOE3 →
+- **Grid mode**: Full factorial, LHS, Sobol, or Halton via pyDOE3/scipy →
   run all → post-hoc Pareto extraction via pymoo.
 - **Adaptive mode**: Multi-objective Bayesian optimization via optuna NSGA-II
   when the full grid is too expensive.
@@ -119,7 +119,7 @@ pip install trade-study[scoring,pareto]  # just scoring + Pareto
 | `scoring` | [scoringrules](https://github.com/frazane/scoringrules) |
 | `pareto` | [pymoo](https://pymoo.org/) |
 | `stacking` | [arviz](https://github.com/arviz-devs/arviz), scipy |
-| `design` | [pyDOE3](https://github.com/relf/pyDOE3), [SALib](https://github.com/SALib/SALib) |
+| `design` | [pyDOE3](https://github.com/relf/pyDOE3), [SALib](https://github.com/SALib/SALib), [scipy](https://scipy.org/) |
 | `adaptive` | [optuna](https://optuna.org/) |
 | `parallel` | joblib |
 | `all` | All of the above |
@@ -128,9 +128,8 @@ pip install trade-study[scoring,pareto]  # just scoring + Pareto
 
 | Package | Domain | Use Case |
 |---------|--------|----------|
-| [VBPCApy](https://github.com/yoavram-lab/VBPCApy) | Bayesian PCA | Convergence sweep: 15-factor grid, coverage/RMSE/CRPS vs. wall time |
+| [VBPCApy](https://github.com/yoavram-lab/VBPCApy) | Bayesian PCA | Convergence sweep: 13-factor grid, coverage/RMSE/CRPS vs. wall time |
 | [pp-eigentest](https://github.com/yoavram-lab/pp-eigentest) | Rank selection | 3-stage method selection: type-I/power/exact vs. robustness |
-| TICCS | Surveillance design | relWIS/peak-timing vs. surveillance cost ($) |
 
 ## Related Packages
 
