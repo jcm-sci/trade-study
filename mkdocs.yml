@@ -64,6 +64,7 @@ nav:
   - User Guide:
       - Reactor Design (CSTR): guide/cstr.md
       - Hyperparameter Sweep (sklearn): guide/sklearn.md
+      - Monitoring Station Design: guide/monitoring.md
   - API Reference:
       - Protocols: api/protocols.md
       - Design: api/design.md

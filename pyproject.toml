@@ -98,6 +98,9 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.ruff]
+extend-exclude = ["docs/**/*.md"]
+
 [tool.ruff.format]
 docstring-code-format = true
 docstring-code-line-length = 72
