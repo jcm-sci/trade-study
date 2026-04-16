@@ -55,7 +55,7 @@ are noise features.  We generate 800 samples and hold out 25 % for
 testing:
 
 ```python
-;--8<-- "examples/sklearn_study.py:dataset"
+--8<-- "examples/sklearn_study.py:dataset"
 ```
 
 ## Simulator and scorer
@@ -70,7 +70,7 @@ In `trade-study`, every experiment needs a **Simulator** and a
 - The **Scorer** extracts the three objective values from each trial.
 
 ```python
-;--8<-- "examples/sklearn_study.py:world"
+--8<-- "examples/sklearn_study.py:world"
 ```
 
 ## Define observables and factors
@@ -79,7 +79,7 @@ In `trade-study`, every experiment needs a **Simulator** and a
 direction is better:
 
 ```python
-;--8<-- "examples/sklearn_study.py:observables"
+--8<-- "examples/sklearn_study.py:observables"
 ```
 
 **Factors** define the hyperparameter search space.  We use discrete
@@ -87,7 +87,7 @@ levels so a full factorial grid is tractable
 ($4 \times 4 \times 4 \times 3 = 192$ combinations):
 
 ```python
-;--8<-- "examples/sklearn_study.py:factors"
+--8<-- "examples/sklearn_study.py:factors"
 ```
 
 ## Run the sweep
@@ -96,7 +96,7 @@ levels so a full factorial grid is tractable
 `run_grid` evaluates them all and returns a `ResultsTable`:
 
 ```python
-;--8<-- "examples/sklearn_study.py:run"
+--8<-- "examples/sklearn_study.py:run"
 ```
 
 ## Inspect the Pareto front
@@ -107,7 +107,7 @@ the front reveals the fundamental trade-off: lower RMSE costs more
 training time and model complexity.
 
 ```python
-;--8<-- "examples/sklearn_study.py:results"
+--8<-- "examples/sklearn_study.py:results"
 ```
 
 The Pareto front typically contains 10–15 designs out of 192.

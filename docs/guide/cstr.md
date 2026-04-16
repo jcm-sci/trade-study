@@ -46,8 +46,8 @@ where $\tau$ is the mean residence time. From these we define:
 ### Why the objectives conflict
 
 Raising the reactor temperature increases $k_1$ (better conversion),
-but also accelerates the unwanted $B \to C$ reaction because $E_{a,2}
-> E_{a,1}$, which *hurts* selectivity.  Meanwhile, both heating and
+but also accelerates the unwanted $B \to C$ reaction because
+$E_{a,2} > E_{a,1}$, which *hurts* selectivity.  Meanwhile, both heating and
 cooling cost energy.  There is no single set of operating conditions
 that simultaneously maximizes conversion and selectivity while
 minimizing cost — the solutions lie on a **Pareto front**.
@@ -60,7 +60,7 @@ microseconds — ideal for demonstrating `trade-study` without waiting
 for expensive simulations.
 
 ```python
-;--8<-- "examples/cstr_study.py:kinetics"
+--8<-- "examples/cstr_study.py:kinetics"
 ```
 
 ## Simulator and scorer
@@ -74,7 +74,7 @@ for expensive simulations.
   results table.
 
 ```python
-;--8<-- "examples/cstr_study.py:world"
+--8<-- "examples/cstr_study.py:world"
 ```
 
 ## Define observables and factors
@@ -83,14 +83,14 @@ for expensive simulations.
 Each one becomes a column in the results table.
 
 ```python
-;--8<-- "examples/cstr_study.py:observables"
+--8<-- "examples/cstr_study.py:observables"
 ```
 
 **Factors** declare *what we can control* — here, four continuous
 operating parameters with physical bounds:
 
 ```python
-;--8<-- "examples/cstr_study.py:factors"
+--8<-- "examples/cstr_study.py:factors"
 ```
 
 ## Build the study phases
@@ -102,7 +102,7 @@ Phase 2.  Phase 2 re-evaluates those 20 designs for confirmation (with
 fresh noise draws), acting as a validation step.
 
 ```python
-;--8<-- "examples/cstr_study.py:phases"
+--8<-- "examples/cstr_study.py:phases"
 ```
 
 ## Run and inspect results
@@ -110,7 +110,7 @@ fresh noise draws), acting as a validation step.
 Create a `Study`, call `.run()`, and then query results per phase:
 
 ```python
-;--8<-- "examples/cstr_study.py:run"
+--8<-- "examples/cstr_study.py:run"
 ```
 
 The results include the Pareto front, per-design scores, and the
@@ -118,7 +118,7 @@ The results include the Pareto front, per-design scores, and the
 front covers the objective space (higher is better):
 
 ```python
-;--8<-- "examples/cstr_study.py:results"
+--8<-- "examples/cstr_study.py:results"
 ```
 
 ## What to try next
