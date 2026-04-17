@@ -10,12 +10,19 @@ import pytest
 from trade_study.design import Factor, FactorType
 from trade_study.protocols import (
     Annotation,
+    Constraint,
     Direction,
     Observable,
     ResultsTable,
     TrialResult,
 )
-from trade_study.study import Phase, Study, top_k_pareto_filter, weighted_sum_filter
+from trade_study.study import (
+    Phase,
+    Study,
+    feasibility_filter,
+    top_k_pareto_filter,
+    weighted_sum_filter,
+)
 
 # ---------------------------------------------------------------------------
 # Toy implementations (same pattern as test_runner)
@@ -888,3 +895,99 @@ def test_study_run_callback_multi_phase(
     study.run(callback=lambda i, n, r: calls.append((i, n, r)))
     # 5 trials in phase 1 + 2 trials in phase 2
     assert len(calls) == 7
+
+
+# ---------------------------------------------------------------------------
+# feasibility_filter (#74)
+# ---------------------------------------------------------------------------
+
+
+def test_feasibility_filter_returns_callable() -> None:
+    fn = feasibility_filter(constraints=[])
+    assert callable(fn)
+
+
+def test_feasibility_filter_keeps_feasible(
+    observables: list[Observable],
+) -> None:
+    rt = ResultsTable(
+        configs=[{"alpha": v} for v in [0.0, 0.25, 0.5, 0.75, 1.0]],
+        scores=np.array([
+            [0.5, 0.0],
+            [0.25, 2.5],
+            [0.0, 5.0],
+            [0.25, 7.5],
+            [0.5, 10.0],
+        ]),
+        observable_names=["error", "cost"],
+    )
+    fn = feasibility_filter([
+        Constraint("low_error", "error", "<=", 0.25),
+    ])
+    idx = fn(rt, observables)
+    assert set(idx.tolist()) == {1, 2, 3}
+
+
+def test_feasibility_filter_multiple_constraints(
+    observables: list[Observable],
+) -> None:
+    rt = ResultsTable(
+        configs=[{"alpha": v} for v in [0.0, 0.25, 0.5, 0.75, 1.0]],
+        scores=np.array([
+            [0.5, 0.0],
+            [0.25, 2.5],
+            [0.0, 5.0],
+            [0.25, 7.5],
+            [0.5, 10.0],
+        ]),
+        observable_names=["error", "cost"],
+    )
+    fn = feasibility_filter([
+        Constraint("low_error", "error", "<=", 0.25),
+        Constraint("low_cost", "cost", "<=", 5.0),
+    ])
+    idx = fn(rt, observables)
+    assert set(idx.tolist()) == {1, 2}
+
+
+def test_feasibility_filter_none_feasible(
+    observables: list[Observable],
+) -> None:
+    rt = ResultsTable(
+        configs=[{"alpha": 0.0}],
+        scores=np.array([[0.5, 0.0]]),
+        observable_names=["error", "cost"],
+    )
+    fn = feasibility_filter([
+        Constraint("impossible", "error", "<", 0.0),
+    ])
+    idx = fn(rt, observables)
+    assert len(idx) == 0
+
+
+def test_feasibility_filter_in_study(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    observables: list[Observable],
+) -> None:
+    """feasibility_filter works as a Phase.filter_fn in a Study."""
+    grid = [{"alpha": v} for v in [0.0, 0.25, 0.5, 0.75, 1.0]]
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=observables,
+        phases=[
+            Phase(
+                name="screen",
+                grid=grid,
+                filter_fn=feasibility_filter([
+                    Constraint("low_cost", "cost", "<=", 5.0),
+                ]),
+            ),
+            Phase(name="refine", grid="carry"),
+        ],
+    )
+    study.run()
+    final = study.results("refine")
+    # alpha=0.0 (cost=0), alpha=0.25 (cost=2.5), alpha=0.5 (cost=5.0) satisfy cost <= 5
+    assert final.scores.shape[0] == 3

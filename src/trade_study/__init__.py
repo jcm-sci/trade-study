@@ -10,6 +10,7 @@ from .design import Factor, FactorType, build_grid, reduce_factors, screen
 from .io import load_results, save_results
 from .protocols import (
     Annotation,
+    Constraint,
     Direction,
     Observable,
     ResultsTable,
@@ -19,11 +20,18 @@ from .protocols import (
 )
 from .runner import run_adaptive, run_grid
 from .stacking import ensemble_predict, stack_bayesian, stack_scores
-from .study import Phase, Study, top_k_pareto_filter, weighted_sum_filter
+from .study import (
+    Phase,
+    Study,
+    feasibility_filter,
+    top_k_pareto_filter,
+    weighted_sum_filter,
+)
 from .viz import plot_calibration, plot_front, plot_parallel, plot_scores
 
 __all__ = [
     "Annotation",
+    "Constraint",
     "Direction",
     "Factor",
     "FactorType",
@@ -39,6 +47,7 @@ __all__ = [
     "coverage_curve",
     "ensemble_predict",
     "extract_front",
+    "feasibility_filter",
     "hypervolume",
     "igd_plus",
     "load_results",

@@ -8,7 +8,13 @@ import numpy as np
 import pytest
 
 from trade_study import Direction, Observable
-from trade_study.protocols import Annotation, ResultsTable, Scorer, Simulator
+from trade_study.protocols import (
+    Annotation,
+    Constraint,
+    ResultsTable,
+    Scorer,
+    Simulator,
+)
 
 # -- Direction enum ------------------------------------------------------------
 
@@ -298,3 +304,129 @@ def test_results_table_observable_names_order() -> None:
         observable_names=names,
     )
     assert rt.observable_names == ["coverage", "rmse", "wall_time"]
+
+
+# -- Constraint dataclass ------------------------------------------------------
+
+
+def test_constraint_creation() -> None:
+    c = Constraint(name="min_cov", observable="coverage", op=">=", threshold=0.5)
+    assert c.name == "min_cov"
+    assert c.observable == "coverage"
+    assert c.op == ">="
+    assert c.threshold == pytest.approx(0.5)
+
+
+def test_constraint_frozen() -> None:
+    c = Constraint(name="c", observable="x", op=">=", threshold=0.0)
+    with pytest.raises(AttributeError):
+        c.threshold = 1.0  # type: ignore[misc]
+
+
+def test_constraint_invalid_op_raises() -> None:
+    with pytest.raises(ValueError, match="unsupported operator"):
+        Constraint(name="bad", observable="x", op="~", threshold=0.0)
+
+
+@pytest.mark.parametrize(
+    ("op", "value", "threshold", "expected"),
+    [
+        (">=", 0.6, 0.5, True),
+        (">=", 0.5, 0.5, True),
+        (">=", 0.4, 0.5, False),
+        ("<=", 0.4, 0.5, True),
+        ("<=", 0.5, 0.5, True),
+        ("<=", 0.6, 0.5, False),
+        (">", 0.6, 0.5, True),
+        (">", 0.5, 0.5, False),
+        ("<", 0.4, 0.5, True),
+        ("<", 0.5, 0.5, False),
+        ("==", 0.5, 0.5, True),
+        ("==", 0.6, 0.5, False),
+        ("!=", 0.6, 0.5, True),
+        ("!=", 0.5, 0.5, False),
+    ],
+)
+def test_constraint_check(
+    op: str, value: float, threshold: float, *, expected: bool
+) -> None:
+    c = Constraint(name="test", observable="x", op=op, threshold=threshold)
+    assert c.check(value) is expected
+
+
+# -- ResultsTable.feasible() ---------------------------------------------------
+
+
+@pytest.fixture
+def scored_table() -> ResultsTable:
+    """Table with 5 rows, 2 observables (coverage, cost).
+
+    Returns:
+        A ResultsTable with coverage and cost columns.
+    """
+    return ResultsTable(
+        configs=[{"a": i} for i in range(5)],
+        scores=np.array([
+            [0.9, 100.0],
+            [0.4, 50.0],
+            [0.6, 80.0],
+            [0.3, 30.0],
+            [0.7, 60.0],
+        ]),
+        observable_names=["coverage", "cost"],
+    )
+
+
+def test_feasible_single_constraint(scored_table: ResultsTable) -> None:
+    constraints = [Constraint("min_cov", "coverage", ">=", 0.5)]
+    mask = scored_table.feasible(constraints)
+    assert mask.dtype == np.bool_
+    expected = np.array([True, False, True, False, True])
+    np.testing.assert_array_equal(mask, expected)
+
+
+def test_feasible_multiple_constraints(scored_table: ResultsTable) -> None:
+    constraints = [
+        Constraint("min_cov", "coverage", ">=", 0.5),
+        Constraint("max_cost", "cost", "<=", 80.0),
+    ]
+    mask = scored_table.feasible(constraints)
+    expected = np.array([False, False, True, False, True])
+    np.testing.assert_array_equal(mask, expected)
+
+
+def test_feasible_all_pass(scored_table: ResultsTable) -> None:
+    constraints = [Constraint("low_bar", "coverage", ">=", 0.0)]
+    mask = scored_table.feasible(constraints)
+    assert mask.all()
+
+
+def test_feasible_none_pass(scored_table: ResultsTable) -> None:
+    constraints = [Constraint("high_bar", "coverage", ">", 1.0)]
+    mask = scored_table.feasible(constraints)
+    assert not mask.any()
+
+
+def test_feasible_annotation_column() -> None:
+    rt = ResultsTable(
+        configs=[{"a": 1}, {"a": 2}],
+        scores=np.array([[0.5], [0.6]]),
+        observable_names=["rmse"],
+        annotations=np.array([[10.0], [50.0]]),
+        annotation_names=["dollar_cost"],
+    )
+    constraints = [Constraint("budget", "dollar_cost", "<=", 20.0)]
+    mask = rt.feasible(constraints)
+    np.testing.assert_array_equal(mask, np.array([True, False]))
+
+
+def test_feasible_unknown_column_raises(scored_table: ResultsTable) -> None:
+    constraints = [Constraint("bad", "nonexistent", ">=", 0.0)]
+    with pytest.raises(KeyError, match="nonexistent"):
+        scored_table.feasible(constraints)
+
+
+def test_feasible_empty_constraints(scored_table: ResultsTable) -> None:
+    mask = scored_table.feasible([])
+    assert mask.all()
+    assert len(mask) == 5
