@@ -70,8 +70,11 @@ adaptive = [
 parallel = [
   "joblib>=1.3",
 ]
+viz = [
+  "matplotlib>=3.6",
+]
 all = [
-  "trade-study[scoring,pareto,stacking,design,adaptive,parallel]",
+  "trade-study[scoring,pareto,stacking,design,adaptive,parallel,viz]",
 ]
 examples = [
   "scikit-learn>=1.3",
@@ -117,7 +120,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*" = ["ANN201", "ANN401", "ARG002", "D103", "INP001", "PLR6301", "S101"]
+"tests/**/*" = ["ANN201", "ANN401", "ARG002", "D102", "D103", "INP001", "PLR6301", "S101"]
 "examples/**/*" = ["ANN401", "ARG002", "ERA001", "INP001", "PLR6301", "T201"]
 "src/trade_study/protocols.py" = ["ANN401"]
 
