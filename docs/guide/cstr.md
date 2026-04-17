@@ -52,6 +52,12 @@ cooling cost energy.  There is no single set of operating conditions
 that simultaneously maximizes conversion and selectivity while
 minimizing cost — the solutions lie on a **Pareto front**.
 
+The kinetics plot below shows this conflict directly.  Conversion rises
+monotonically with temperature, but selectivity peaks and then falls
+as the consecutive $B \to C$ reaction accelerates:
+
+![Reaction kinetics](../assets/cstr_kinetics.png)
+
 ## Ground-truth model
 
 The code below implements the steady-state equations as a pure Python
@@ -120,6 +126,31 @@ front covers the objective space (higher is better):
 ```python
 --8<-- "examples/cstr_study.py:results"
 ```
+
+### Pareto front scatter matrix
+
+![Pareto front](../assets/cstr_front.png)
+
+With three objectives the front is a surface; `plot_front` shows all
+pairwise projections.  The conversion–selectivity panel is the
+classic Pareto trade-off curve.
+
+### Parallel coordinates
+
+![Parallel coordinates](../assets/cstr_parallel.png)
+
+Each line is one reactor configuration, coloured by Pareto membership.
+Front designs cluster at moderate temperatures and longer residence
+times — the operating region where conversion and selectivity are
+both reasonable.
+
+### Selectivity strip plot
+
+![Selectivity strip plot](../assets/cstr_selectivity.png)
+
+Scores for each design, split by Pareto status.  Front members span
+the full selectivity range, reflecting different points along the
+conversion–selectivity trade-off.
 
 ## What to try next
 

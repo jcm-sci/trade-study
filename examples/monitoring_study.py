@@ -22,8 +22,13 @@ from trade_study import (
     Observable,
     build_grid,
     extract_front,
+    plot_front,
+    plot_parallel,
+    plot_scores,
     run_grid,
 )
+
+ASSET_DIR = "docs/assets"
 
 # ── Ground-truth signal ────────────────────────────────────────────
 
@@ -270,6 +275,104 @@ factors = [
 # --8<-- [end:factors]
 
 
+def _plot_reference_signal(plt: Any) -> None:
+    """Save a 1-hour window of the ground-truth reference signal."""
+    window = slice(3600, 7200)
+    t_hours = T_TRUE[window] / 3600.0
+
+    fig, ax = plt.subplots(figsize=(10, 3))
+    ax.plot(t_hours, REFERENCE[window], linewidth=0.6, color="0.3")
+    ax.set_xlabel("Time [hours]")
+    ax.set_ylabel("Signal amplitude")
+    ax.set_title("Reference signal (1-hour window)")
+    fig.tight_layout()
+    fig.savefig(f"{ASSET_DIR}/monitoring_signal.png", dpi=150, bbox_inches="tight")
+    print("\nSaved monitoring_signal.png")
+    plt.close(fig)
+
+
+def _plot_best_vs_cheapest(
+    plt: Any,
+    best_cfg: dict[str, Any],
+    cheap_cfg: dict[str, Any],
+) -> None:
+    """Compare best-RMSE and cheapest Pareto designs against truth."""
+    seed_best = hash(frozenset(best_cfg.items())) % 2**32
+    obs_best = observe(
+        REFERENCE,
+        sample_interval=best_cfg["sample_interval"],
+        adc_bits=best_cfg["adc_bits"],
+        sensor_grade=best_cfg["sensor_grade"],
+        n_sensors=best_cfg["n_sensors"],
+        rng=np.random.default_rng(seed_best),
+    )
+    seed_cheap = hash(frozenset(cheap_cfg.items())) % 2**32
+    obs_cheap = observe(
+        REFERENCE,
+        sample_interval=cheap_cfg["sample_interval"],
+        adc_bits=cheap_cfg["adc_bits"],
+        sensor_grade=cheap_cfg["sensor_grade"],
+        n_sensors=cheap_cfg["n_sensors"],
+        rng=np.random.default_rng(seed_cheap),
+    )
+
+    fig, (ax_b, ax_c) = plt.subplots(2, 1, figsize=(10, 5), sharex=True)
+    t_best = np.arange(len(obs_best)) * best_cfg["sample_interval"] / 3600.0
+    t_cheap = np.arange(len(obs_cheap)) * cheap_cfg["sample_interval"] / 3600.0
+
+    mask_ref = (T_TRUE / 3600.0 >= 1.0) & (T_TRUE / 3600.0 <= 2.0)
+    mask_best = (t_best >= 1.0) & (t_best <= 2.0)
+    mask_cheap = (t_cheap >= 1.0) & (t_cheap <= 2.0)
+
+    ax_b.plot(
+        T_TRUE[mask_ref] / 3600.0,
+        REFERENCE[mask_ref],
+        linewidth=0.5,
+        color="0.7",
+        label="Truth",
+    )
+    ax_b.plot(t_best[mask_best], obs_best[mask_best], linewidth=0.8, label="Best RMSE")
+    ax_b.set_ylabel("Amplitude")
+    ax_b.set_title(
+        f"Best RMSE: interval={best_cfg['sample_interval']}s, "
+        f"bits={best_cfg['adc_bits']}, "
+        f"grade={best_cfg['sensor_grade']}, n={best_cfg['n_sensors']}",
+    )
+    ax_b.legend(loc="upper right")
+
+    ax_c.plot(
+        T_TRUE[mask_ref] / 3600.0,
+        REFERENCE[mask_ref],
+        linewidth=0.5,
+        color="0.7",
+        label="Truth",
+    )
+    ax_c.plot(
+        t_cheap[mask_cheap],
+        obs_cheap[mask_cheap],
+        linewidth=0.8,
+        color="C1",
+        label="Cheapest",
+    )
+    ax_c.set_xlabel("Time [hours]")
+    ax_c.set_ylabel("Amplitude")
+    ax_c.set_title(
+        f"Cheapest: interval={cheap_cfg['sample_interval']}s, "
+        f"bits={cheap_cfg['adc_bits']}, "
+        f"grade={cheap_cfg['sensor_grade']}, n={cheap_cfg['n_sensors']}",
+    )
+    ax_c.legend(loc="upper right")
+
+    fig.tight_layout()
+    fig.savefig(
+        f"{ASSET_DIR}/monitoring_comparison.png",
+        dpi=150,
+        bbox_inches="tight",
+    )
+    print("Saved monitoring_comparison.png")
+    plt.close(fig)
+
+
 def main() -> None:
     """Run the monitoring station trade study and print results."""
     # --8<-- [start:run]
@@ -286,9 +389,10 @@ def main() -> None:
 
     # --8<-- [start:results]
     # Pareto front
+    directions = [o.direction for o in observables]
     front_idx = extract_front(
         results.scores,
-        [o.direction for o in observables],
+        directions,
     )
     print(f"Pareto front: {len(front_idx)} / {len(grid)} designs\n")
 
@@ -307,8 +411,7 @@ def main() -> None:
         )
 
     # Cheapest design on the front
-    front_cost = results.scores[front_idx, 2]
-    cheapest = front_idx[np.argmin(front_cost)]
+    cheapest = front_idx[np.argmin(results.scores[front_idx, 2])]
     print(f"\nCheapest Pareto design: {results.configs[cheapest]}")
     print(
         f"  RMSE={results.scores[cheapest, 0]:.4f}  "
@@ -317,8 +420,7 @@ def main() -> None:
     )
 
     # Best RMSE on the front
-    front_rmse = results.scores[front_idx, 0]
-    best = front_idx[np.argmin(front_rmse)]
+    best = front_idx[np.argmin(results.scores[front_idx, 0])]
     print(f"\nLowest-RMSE Pareto design: {results.configs[best]}")
     print(
         f"  RMSE={results.scores[best, 0]:.4f}  "
@@ -326,6 +428,47 @@ def main() -> None:
         f"cost={results.scores[best, 2]:.0f}"
     )
     # --8<-- [end:results]
+
+    # --8<-- [start:plots]
+    import matplotlib.pyplot as plt
+
+    # ── Domain-specific: reference signal (1-hour window) ──────────
+    _plot_reference_signal(plt)
+
+    # ── Domain-specific: best vs cheapest Pareto designs ───────────
+    _plot_best_vs_cheapest(plt, results.configs[best], results.configs[cheapest])
+
+    # ── Trade-study plots ──────────────────────────────────────────
+    # Pareto front scatter (3 objectives → pairwise matrix)
+    fig_front, _ = plot_front(results, directions)
+    fig_front.savefig(
+        f"{ASSET_DIR}/monitoring_front.png",
+        dpi=150,
+        bbox_inches="tight",
+    )
+    print("Saved monitoring_front.png")
+    plt.close(fig_front)
+
+    # Parallel coordinates
+    fig_par, _ = plot_parallel(results, directions)
+    fig_par.savefig(
+        f"{ASSET_DIR}/monitoring_parallel.png",
+        dpi=150,
+        bbox_inches="tight",
+    )
+    print("Saved monitoring_parallel.png")
+    plt.close(fig_par)
+
+    # RMSE strip plot
+    fig_rmse, _ = plot_scores(results, "rmse", directions)
+    fig_rmse.savefig(
+        f"{ASSET_DIR}/monitoring_rmse.png",
+        dpi=150,
+        bbox_inches="tight",
+    )
+    print("Saved monitoring_rmse.png")
+    plt.close(fig_rmse)
+    # --8<-- [end:plots]
 
 
 if __name__ == "__main__":

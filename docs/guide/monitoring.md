@@ -65,6 +65,12 @@ The instrument applies a chain of realistic transformations:
 
 ## Reference signal generation
 
+The plot below shows a 1-hour window of the latent truth, revealing
+the diurnal trend, the short-period oscillations, and the correlated
+noise component:
+
+![Reference signal](../assets/monitoring_signal.png)
+
 ```python
 --8<-- "examples/monitoring_study.py:signal"
 ```
@@ -126,6 +132,41 @@ the fundamental budget trade-off: better signal recovery costs more.
 ```python
 --8<-- "examples/monitoring_study.py:results"
 ```
+
+### Best vs cheapest Pareto designs
+
+The comparison below overlays the observed signal (coloured) on the
+ground-truth reference (grey) for the two extreme Pareto members:
+
+![Best vs cheapest](../assets/monitoring_comparison.png)
+
+The best-RMSE design tracks every oscillation; the cheapest design
+misses the short-period modes entirely — exactly the trade-off the
+Pareto front quantifies.
+
+### Pareto front scatter matrix
+
+![Pareto front](../assets/monitoring_front.png)
+
+Each dot is one instrument configuration; highlighted points lie on
+the Pareto front.  The RMSE–cost and fidelity–cost panels show the
+clear budget trade-off.
+
+### Parallel coordinates
+
+![Parallel coordinates](../assets/monitoring_parallel.png)
+
+Every line is one design, coloured by Pareto membership.  Front
+designs span from ultra-cheap to ultra-precise, with the mid-range
+configurations showing the sharpest cost-performance knee.
+
+### RMSE strip plot
+
+![RMSE strip plot](../assets/monitoring_rmse.png)
+
+Scores split by Pareto membership.  Most low-RMSE designs are on the
+front, while dominated designs cluster at higher error — confirming
+the front captures the best achievable accuracy at each cost level.
 
 ## What to try next
 
