@@ -99,6 +99,25 @@ operating parameters with physical bounds:
 --8<-- "examples/cstr_study.py:factors"
 ```
 
+## Constraints
+
+Hard feasibility bounds can be defined with `Constraint` objects.
+`feasibility_filter` builds a phase filter that drops designs
+violating any constraint:
+
+```python
+--8<-- "examples/cstr_study.py:constraint"
+```
+
+## Factor screening
+
+Before committing to a full grid sweep, Sobol screening identifies
+which factors influence the objectives most:
+
+```python
+--8<-- "examples/cstr_study.py:screening"
+```
+
 ## Build the study phases
 
 A `Study` chains multiple **Phases**.  Phase 1 explores the design space
@@ -154,9 +173,37 @@ conversion–selectivity trade-off.
 
 ## What to try next
 
-- Add a **screening** step with `screen()` to identify which factors
-  matter most before running the full grid.
-- Use `run_adaptive()` for Bayesian optimization instead of LHS.
 - Call `stack_bayesian()` on the Pareto front to compute model-averaging
   weights.
 - Save results with `save_results()` for later analysis.
+- Combine `feasibility_filter` with `top_k_pareto_filter` across
+  successive phases for constrained multi-objective optimisation.
+
+## Progress callbacks and parallel execution
+
+`run_grid` accepts a `callback` for progress reporting and `n_jobs`
+for parallel execution via joblib:
+
+```python
+--8<-- "examples/cstr_study.py:callback"
+```
+
+## Adaptive exploration
+
+When the design space is too large for a grid sweep, use
+`Phase(grid="adaptive")` for optuna-driven multi-objective
+Bayesian optimisation.  The `factors` argument on `Study` provides
+the parameter bounds:
+
+```python
+--8<-- "examples/cstr_study.py:adaptive"
+```
+
+## Feasibility-constrained phases
+
+Use `feasibility_filter` as a phase filter to enforce hard
+constraints before passing designs to subsequent phases:
+
+```python
+--8<-- "examples/cstr_study.py:feasibility"
+```

@@ -17,6 +17,7 @@ import numpy as np
 
 from trade_study import (
     Annotation,
+    Constraint,
     Direction,
     Factor,
     FactorType,
@@ -27,6 +28,9 @@ from trade_study import (
     coverage_curve,
     ensemble_predict,
     extract_front,
+    feasibility_filter,
+    hypervolume,
+    igd_plus,
     load_results,
     plot_calibration,
     plot_front,
@@ -39,6 +43,7 @@ from trade_study import (
     screen,
     stack_scores,
     top_k_pareto_filter,
+    weighted_sum_filter,
 )
 
 ASSET_DIR = "docs/assets"
@@ -191,7 +196,7 @@ class BayesianRegressionScorer:
         observations: Any,
         config: dict[str, Any],
     ) -> dict[str, float]:
-        """Compute CRPS, 95 percent coverage, and RMSE on posterior mean.
+        """Compute CRPS, energy, 95 percent coverage, RMSE, and MAE.
 
         Args:
             truth: True test-set values (y_test).
@@ -199,12 +204,20 @@ class BayesianRegressionScorer:
             config: Hyperparameter dict (unused).
 
         Returns:
-            Scores for crps, coverage_95, and rmse.
+            Scores for crps, energy, coverage_95, rmse, and mae.
         """
-        crps = score("crps", observations["pred_samples"], truth)
+        crps_val = score("crps", observations["pred_samples"], truth)
+        energy_val = score("energy", observations["pred_samples"], truth)
         cov95 = score("coverage", observations["pred_samples"], truth, level=0.95)
-        rmse = score("rmse", observations["pred_mean"], truth)
-        return {"crps": crps, "coverage_95": cov95, "rmse": rmse}
+        rmse_val = score("rmse", observations["pred_mean"], truth)
+        mae_val = score("mae", observations["pred_mean"], truth)
+        return {
+            "crps": crps_val,
+            "energy": energy_val,
+            "coverage_95": cov95,
+            "rmse": rmse_val,
+            "mae": mae_val,
+        }
 
 
 # --8<-- [end:world]
@@ -215,8 +228,10 @@ class BayesianRegressionScorer:
 # --8<-- [start:observables]
 observables = [
     Observable("crps", Direction.MINIMIZE),
+    Observable("energy", Direction.MINIMIZE, weight=0.5),
     Observable("coverage_95", Direction.MAXIMIZE, weight=0.5),
     Observable("rmse", Direction.MINIMIZE),
+    Observable("mae", Direction.MINIMIZE, weight=0.3),
 ]
 # --8<-- [end:observables]
 
@@ -236,6 +251,16 @@ compute_cost = Annotation(
     key="n_obs",
 )
 # --8<-- [end:annotation]
+
+# --8<-- [start:constraint]
+# Require at least 90% empirical coverage at the 95% nominal level
+min_coverage = Constraint(
+    name="min_coverage",
+    observable="coverage_95",
+    op=">=",
+    threshold=0.90,
+)
+# --8<-- [end:constraint]
 
 
 def _run_screening(
@@ -270,19 +295,26 @@ def _print_front(results: Any, front_idx: Any) -> None:
     # --8<-- [start:results]
     print(f"\nPareto front: {len(front_idx)} / {results.scores.shape[0]} designs")
 
-    print(
-        f"\n{'prior_var':>10s}  {'noise':>6s}  {'n_obs':>5s}  "
-        f"{'CRPS':>6s}  {'Cov95':>6s}  {'RMSE':>6s}  {'Cost':>5s}"
+    header = (
+        f"{'prior_var':>10s}  {'noise':>6s}  {'n_obs':>5s}  "
+        f"{'CRPS':>6s}  {'Energy':>7s}  {'Cov95':>6s}  "
+        f"{'RMSE':>6s}  {'MAE':>6s}  {'Cost':>5s}"
     )
-    print("-" * 58)
+    print(f"\n{header}")
+    print("-" * len(header))
     for i in front_idx:
         cfg = results.configs[i]
-        crps_val, cov, rmse_val = results.scores[i]
+        crps_val = results.scores[i, 0]
+        energy_val = results.scores[i, 1]
+        cov = results.scores[i, 2]
+        rmse_val = results.scores[i, 3]
+        mae_val = results.scores[i, 4]
         cost = results.annotations[i, 0] if results.annotations is not None else 0.0
         print(
             f"{cfg['prior_var']:10.2f}  {cfg['noise_scale']:6.2f}  "
             f"{cfg['n_obs']:5d}  "
-            f"{crps_val:6.3f}  {cov:6.3f}  {rmse_val:6.3f}  {cost:5.1f}"
+            f"{crps_val:6.3f}  {energy_val:7.3f}  {cov:6.3f}  "
+            f"{rmse_val:6.3f}  {mae_val:6.3f}  {cost:5.1f}"
         )
     # --8<-- [end:results]
 
@@ -314,7 +346,7 @@ def _run_stacking(results: Any, front_idx: Any, world: Any) -> None:
 
     ens_mean = ensemble_predict(front_predictions, stacking_weights)
     ens_rmse = float(np.sqrt(np.mean((ens_mean - Y_TEST) ** 2)))
-    best_single = float(results.scores[front_idx, 2].min())
+    best_single = float(results.scores[front_idx, 3].min())  # rmse column
     print(f"\nBest single-model RMSE: {best_single:.4f}")
     print(f"Stacked ensemble RMSE:  {ens_rmse:.4f}")
     # --8<-- [end:stacking]
@@ -388,13 +420,146 @@ def _save_plots(results: Any, directions: Any, nominal: Any, empirical: Any) -> 
     # --8<-- [end:plots]
 
 
+def _run_igd_plus(results: Any, front_idx: Any) -> None:
+    """Compute IGD+ relative to a synthetic ideal front."""
+    # --8<-- [start:igd_plus]
+    directions = [o.direction for o in observables]
+    weights = [o.weight for o in observables]
+
+    front_scores = results.scores[front_idx]
+
+    # Build a synthetic reference front from per-objective best values
+    n_obj = front_scores.shape[1]
+    ideal = np.tile(np.median(front_scores, axis=0), (n_obj, 1))
+    for j, d in enumerate(directions):
+        ideal[j, j] = (
+            front_scores[:, j].min()
+            if d == Direction.MINIMIZE
+            else front_scores[:, j].max()
+        )
+
+    ref_point = np.array([
+        front_scores[:, j].max()
+        if d == Direction.MINIMIZE
+        else front_scores[:, j].min()
+        for j, d in enumerate(directions)
+    ])
+    hv = hypervolume(front_scores, ref_point, directions, weights)
+    igd = igd_plus(front_scores, ideal, directions, weights)
+    print(f"\nHypervolume: {hv:.4f}")
+    print(f"IGD+:        {igd:.4f}")
+    # --8<-- [end:igd_plus]
+
+
+def _run_feasibility(results: Any) -> None:
+    """Demonstrate Constraint + feasibility_filter."""
+    # --8<-- [start:feasibility]
+    all_idx = np.arange(results.scores.shape[0])
+    feas_filter = feasibility_filter(constraints=[min_coverage])
+    kept = feas_filter(results, observables)
+    print("\nFeasibility filter (coverage_95 >= 0.90):")
+    print(f"  {len(all_idx)} total -> {len(kept)} feasible designs")
+    # --8<-- [end:feasibility]
+
+
+def _run_weighted_sum(results: Any) -> None:
+    """Demonstrate weighted_sum_filter for scalarisation-based selection."""
+    # --8<-- [start:weighted_sum]
+    ws_filter = weighted_sum_filter(
+        weights={"crps": 1.0, "coverage_95": 0.5, "rmse": 0.8},
+        k=8,
+    )
+    kept = ws_filter(results, observables)
+    print("\nWeighted-sum filter (top 8 by scalarised score):")
+    for i in kept[:5]:
+        cfg = results.configs[i]
+        print(
+            f"  prior_var={cfg['prior_var']:.2f}, "
+            f"noise={cfg['noise_scale']:.2f}, "
+            f"n_obs={cfg['n_obs']}"
+        )
+    if len(kept) > 5:
+        print(f"  ... and {len(kept) - 5} more")
+    # --8<-- [end:weighted_sum]
+
+
+def _run_sobol_grid(world: Any, scorer: Any) -> None:
+    """Demonstrate Sobol quasi-random grid generation."""
+    # --8<-- [start:sobol]
+    sobol_grid = build_grid(factors, method="sobol", n_samples=40, seed=0)
+    for cfg in sobol_grid:
+        cfg["n_obs"] = round(cfg["n_obs"])
+
+    print(f"\nSobol grid: {len(sobol_grid)} configurations")
+    sobol_results = run_grid(
+        world=world,
+        scorer=scorer,
+        grid=sobol_grid,
+        observables=observables,
+    )
+    directions = [o.direction for o in observables]
+    weights = [o.weight for o in observables]
+    sobol_front = extract_front(sobol_results.scores, directions, weights)
+    print(f"Sobol Pareto front: {len(sobol_front)} designs")
+    # --8<-- [end:sobol]
+
+
+def _run_study_workflow() -> None:
+    """Demonstrate Study with summary(), stack(), and feasibility_filter."""
+    # --8<-- [start:study_workflow]
+    world = BayesianRegressionSimulator()
+    scorer = BayesianRegressionScorer()
+
+    grid = build_grid(factors, method="lhs", n_samples=60, seed=42)
+    for cfg in grid:
+        cfg["n_obs"] = round(cfg["n_obs"])
+
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=observables,
+        phases=[
+            Phase(
+                name="explore",
+                grid=grid,
+                filter_fn=feasibility_filter(
+                    constraints=[min_coverage],
+                ),
+            ),
+            Phase(name="rank", grid="carry"),
+        ],
+        annotations=[compute_cost],
+    )
+    study.run()
+
+    # Study.summary() — per-phase statistics
+    summary = study.summary()
+    for phase_name, stats in summary.items():
+        print(f"\n  Phase '{phase_name}':")
+        print(f"    trials={stats['n_trials']}, front={stats['n_front']}")
+        for obs_name, rng in stats["observable_ranges"].items():
+            print(f"    {obs_name}: [{rng['min']:.4f}, {rng['max']:.4f}]")
+
+    # Study.stack() — convenience method for score-based stacking
+    stacking_w = study.stack("rank", maximize=False)
+    print("Study.stack() weights (top entries):")
+    for i, w in enumerate(stacking_w):
+        if w > 0.01:
+            print(f"  design {i}: {w:.3f}")
+    # --8<-- [end:study_workflow]
+
+
 def _run_multi_fidelity() -> None:
-    """Demonstrate multi-fidelity via Phase-level world overrides."""
+    """Demonstrate multi-fidelity via Phase-level world and scorer overrides."""
     # --8<-- [start:multifidelity]
     # Cheap surrogate: only 50 posterior draws (fast, noisier scores)
     cheap_world = BayesianRegressionSimulator(n_samples=50)
     # Expensive model: 2000 posterior draws (slow, precise scores)
     expensive_world = BayesianRegressionSimulator(n_samples=2000)
+
+    # Phase-level scorer override: use a separate scorer for screening
+    screen_scorer = BayesianRegressionScorer()
+    validate_scorer = BayesianRegressionScorer()
 
     grid = build_grid(factors, method="lhs", n_samples=60, seed=42)
     for cfg in grid:
@@ -402,17 +567,18 @@ def _run_multi_fidelity() -> None:
 
     study = Study(
         world=expensive_world,
-        scorer=BayesianRegressionScorer(),
+        scorer=validate_scorer,
         observables=observables,
         phases=[
-            # Phase 1: screen 60 designs with the cheap surrogate
+            # Phase 1: screen with cheap world AND its own scorer
             Phase(
                 name="screen",
                 grid=grid,
                 world=cheap_world,
+                scorer=screen_scorer,
                 filter_fn=top_k_pareto_filter(k=10),
             ),
-            # Phase 2: validate top 10 with the expensive model
+            # Phase 2: validate top 10 with the expensive model + default scorer
             Phase(name="validate", grid="carry"),
         ],
         annotations=[compute_cost],
@@ -460,10 +626,15 @@ def main() -> None:
     front_idx = extract_front(results.scores, directions, weights)
 
     _print_front(results, front_idx)
+    _run_igd_plus(results, front_idx)
+    _run_feasibility(results)
+    _run_weighted_sum(results)
     _run_stacking(results, front_idx, world)
     nominal, empirical = _run_calibration(results, front_idx, world)
     _run_persistence(results)
     _save_plots(results, directions, nominal, empirical)
+    _run_sobol_grid(world, scorer)
+    _run_study_workflow()
     _run_multi_fidelity()
 
 

@@ -79,9 +79,12 @@ metrics:
 
 - **CRPS** (Continuous Ranked Probability Score) — a proper scoring
   rule that rewards sharp, well-calibrated predictive distributions.
+- **Energy score** — a multivariate proper scoring rule
+  complementary to CRPS.
 - **Coverage (95 %)** — the fraction of test points whose true value
   falls inside the 95 % posterior predictive interval.
 - **RMSE** — root mean squared error of the posterior mean.
+- **MAE** — mean absolute error of the posterior mean.
 
 ```python
 --8<-- "examples/bayesian_study.py:world"
@@ -108,6 +111,16 @@ cost model for the number of observations:
 
 ```python
 --8<-- "examples/bayesian_study.py:annotation"
+```
+
+## Constraints
+
+A `Constraint` defines a hard feasibility bound on an observable.
+`feasibility_filter` builds a phase filter that drops any design
+violating the constraints:
+
+```python
+--8<-- "examples/bayesian_study.py:constraint"
 ```
 
 ## Factor screening
@@ -156,6 +169,56 @@ overconfident nor excessively vague.
 ### CRPS strip plot
 
 ![CRPS strip plot](../assets/bayesian_crps.png)
+
+## Quality indicators
+
+`hypervolume` measures the dominated volume of the Pareto front;
+`igd_plus` (inverted generational distance plus) measures how close
+the front is to a reference set.  Together they quantify front
+quality — useful for comparing design methods or grid sizes:
+
+```python
+--8<-- "examples/bayesian_study.py:igd_plus"
+```
+
+## Feasibility filtering
+
+Apply `Constraint` + `feasibility_filter` to keep only designs
+meeting hard bounds (here, `coverage_95 >= 0.90`):
+
+```python
+--8<-- "examples/bayesian_study.py:feasibility"
+```
+
+## Weighted-sum filtering
+
+`weighted_sum_filter` scalarises objectives into a single score
+via min-max normalisation and weighted combination, then keeps
+the top-K designs.  Useful when you want a simple ranking
+without full Pareto analysis:
+
+```python
+--8<-- "examples/bayesian_study.py:weighted_sum"
+```
+
+## Sobol grid
+
+`build_grid(method="sobol")` generates quasi-random points with
+better space-filling properties than LHS for low dimensions:
+
+```python
+--8<-- "examples/bayesian_study.py:sobol"
+```
+
+## Study workflow
+
+The `Study` class orchestrates multi-phase workflows.
+`Study.summary()` returns per-phase statistics and
+`Study.stack()` computes stacking weights directly:
+
+```python
+--8<-- "examples/bayesian_study.py:study_workflow"
+```
 
 ## Score-based stacking
 
@@ -222,9 +285,9 @@ rather than a design factor:
 
 ## What to try next
 
-- Swap `method="morris"` for `method="sobol"` in `screen()` for
-  variance-based sensitivity indices.
-- Use `Constraint` + `feasibility_filter` to enforce
-  `coverage_95 >= 0.90` before stacking.
 - Try `stack_bayesian()` on models that expose log-likelihood
   (requires `arviz`).
+- Add more phases to the `Study` — e.g. a third phase that
+  re-evaluates with even higher fidelity.
+- Experiment with different `weighted_sum_filter` weight vectors
+  to explore different trade-off preferences.
