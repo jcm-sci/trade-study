@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
     from .protocols import (
         Annotation,
+        Constraint,
         Observable,
         ResultsTable,
         Scorer,
@@ -140,6 +141,28 @@ def weighted_sum_filter(
         scalar = normed @ w
         order = np.argsort(scalar)
         return order[:k].astype(np.intp)
+
+    return _filter
+
+
+def feasibility_filter(
+    constraints: list[Constraint],
+) -> Callable[[ResultsTable, list[Observable]], NDArray[np.intp]]:
+    """Create a filter that keeps only designs satisfying all constraints.
+
+    Args:
+        constraints: Constraint objects to evaluate against results.
+
+    Returns:
+        Filter function compatible with ``Phase.filter_fn``.
+    """
+
+    def _filter(
+        results: ResultsTable,
+        _observables: list[Observable],
+    ) -> NDArray[np.intp]:
+        mask = results.feasible(constraints)
+        return np.nonzero(mask)[0].astype(np.intp)
 
     return _filter
 

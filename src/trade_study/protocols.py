@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import operator as _operator
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     import numpy as np
     from numpy.typing import NDArray
 
@@ -32,6 +35,61 @@ class Observable:
     name: str
     direction: Direction
     weight: float = 1.0
+
+
+_OP_MAP: dict[str, Callable[[Any, Any], bool]] = {
+    ">=": _operator.ge,
+    "<=": _operator.le,
+    ">": _operator.gt,
+    "<": _operator.lt,
+    "==": _operator.eq,
+    "!=": _operator.ne,
+}
+
+
+@dataclass(frozen=True)
+class Constraint:
+    """Feasibility constraint on an observable or annotation.
+
+    A design is feasible when ``scores[observable] <op> threshold`` is
+    true.
+
+    Attributes:
+        name: Human-readable label (e.g. ``"min_conversion"``).
+        observable: Name of the observable or annotation column to test.
+        op: Comparison operator as a string (``">="`` ``"<="`` ``">"``
+            ``"<"`` ``"=="`` ``"!="``).
+        threshold: Scalar threshold value.
+    """
+
+    name: str
+    observable: str
+    op: str
+    threshold: float
+
+    def __post_init__(self) -> None:
+        """Validate the comparison operator.
+
+        Raises:
+            ValueError: If *op* is not one of the supported operators.
+        """
+        if self.op not in _OP_MAP:
+            msg = (
+                f"Constraint {self.name!r}: unsupported operator {self.op!r}. "
+                f"Use one of {sorted(_OP_MAP)}"
+            )
+            raise ValueError(msg)
+
+    def check(self, value: float) -> bool:
+        """Test whether a scalar value satisfies the constraint.
+
+        Args:
+            value: Scalar score or annotation value to test.
+
+        Returns:
+            ``True`` if the value satisfies the constraint.
+        """
+        return bool(_OP_MAP[self.op](value, self.threshold))
 
 
 @runtime_checkable
@@ -131,3 +189,41 @@ class ResultsTable:
     annotations: NDArray[np.floating[Any]] | None = None  # (n_trials, n_annotations)
     annotation_names: list[str] = field(default_factory=list)
     metadata: list[dict[str, Any]] = field(default_factory=list)
+
+    def feasible(self, constraints: list[Constraint]) -> NDArray[np.bool_]:
+        """Return a boolean mask indicating which rows satisfy all constraints.
+
+        Each constraint references an observable or annotation column by
+        name.  A row is feasible only when **every** constraint evaluates
+        to ``True``.
+
+        Args:
+            constraints: Constraint objects to evaluate.
+
+        Returns:
+            Boolean array of shape ``(n_trials,)``.
+
+        Raises:
+            KeyError: If a constraint references a column not found in
+                either ``observable_names`` or ``annotation_names``.
+        """
+        import numpy as np
+
+        mask = np.ones(len(self.configs), dtype=np.bool_)
+        for con in constraints:
+            if con.observable in self.observable_names:
+                col_idx = self.observable_names.index(con.observable)
+                values = self.scores[:, col_idx]
+            elif (
+                con.observable in self.annotation_names and self.annotations is not None
+            ):
+                col_idx = self.annotation_names.index(con.observable)
+                values = self.annotations[:, col_idx]
+            else:
+                msg = (
+                    f"Constraint {con.name!r}: column {con.observable!r} "
+                    f"not found in observables or annotations"
+                )
+                raise KeyError(msg)
+            mask &= _OP_MAP[con.op](values, con.threshold)
+        return mask
