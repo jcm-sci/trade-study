@@ -314,16 +314,80 @@ def test_screen_multiple_observables(continuous_factors: list[Factor]) -> None:
     assert result["obs2"].shape == (2,)
 
 
-def test_screen_rejects_non_morris() -> None:
+def test_screen_rejects_unknown_method() -> None:
     factors = [Factor("x", FactorType.CONTINUOUS, bounds=(0.0, 1.0))]
-    with pytest.raises(NotImplementedError, match="not yet implemented"):
-        screen(lambda _c: {"y": 0.0}, factors, method="sobol")
+    with pytest.raises(ValueError, match="Unknown screening method"):
+        screen(lambda _c: {"y": 0.0}, factors, method="bogus")
 
 
 def test_screen_rejects_no_continuous() -> None:
     factors = [Factor("m", FactorType.CATEGORICAL, levels=["a", "b"])]
     with pytest.raises(ValueError, match="at least one continuous"):
         screen(lambda _c: {"y": 0.0}, factors)
+
+
+# ---------------------------------------------------------------------------
+# screen — Sobol (#76)
+# ---------------------------------------------------------------------------
+
+
+def test_screen_sobol_returns_dict(continuous_factors: list[Factor]) -> None:
+    result = screen(
+        _linear_model,
+        continuous_factors,
+        method="sobol",
+        n_trajectories=64,
+        seed=0,
+    )
+    assert isinstance(result, dict)
+    assert "y" in result
+
+
+def test_screen_sobol_importance_shape(continuous_factors: list[Factor]) -> None:
+    result = screen(
+        _linear_model,
+        continuous_factors,
+        method="sobol",
+        n_trajectories=64,
+        seed=0,
+    )
+    assert result["y"].shape == (2,)
+
+
+def test_screen_sobol_detects_influential_factor(
+    continuous_factors: list[Factor],
+) -> None:
+    """Sobol S1 for alpha should dominate; beta should be near zero."""
+    result = screen(
+        _linear_model,
+        continuous_factors,
+        method="sobol",
+        n_trajectories=256,
+        seed=0,
+    )
+    assert result["y"][0] > result["y"][1]
+    assert result["y"][1] == pytest.approx(0.0, abs=0.1)
+
+
+def test_screen_sobol_multiple_observables(
+    continuous_factors: list[Factor],
+) -> None:
+    def multi_obs(cfg: dict[str, Any]) -> dict[str, float]:
+        return {
+            "obs1": cfg["alpha"],
+            "obs2": cfg["beta"],
+        }
+
+    result = screen(
+        multi_obs,
+        continuous_factors,
+        method="sobol",
+        n_trajectories=64,
+        seed=0,
+    )
+    assert set(result.keys()) == {"obs1", "obs2"}
+    assert result["obs1"].shape == (2,)
+    assert result["obs2"].shape == (2,)
 
 
 # ---------------------------------------------------------------------------

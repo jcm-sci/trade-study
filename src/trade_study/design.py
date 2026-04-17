@@ -228,8 +228,10 @@ def screen(
         run_fn: Callable that takes a config dict and returns a dict of
             observable name → scalar score.
         factors: List of continuous factors to screen.
-        method: Screening method ("morris" or "sobol").
-        n_trajectories: Number of Morris trajectories or Sobol samples.
+        method: Screening method (``"morris"`` or ``"sobol"``).
+        n_trajectories: Number of Morris trajectories.  For Sobol, this
+            controls the base sample size *N*; the total number of model
+            evaluations is *N* x (num_vars + 2).
         seed: Random seed.
 
     Returns:
@@ -237,16 +239,9 @@ def screen(
         (mu_star for Morris, S1 for Sobol), one value per factor.
 
     Raises:
-        NotImplementedError: If method is not "morris".
-        ValueError: If no continuous factors are provided.
+        ValueError: If *method* is unknown or no continuous factors are
+            provided.
     """
-    from SALib.analyze import morris as morris_analyze  # type: ignore[import-untyped]
-    from SALib.sample import morris as morris_sample  # type: ignore[import-untyped]
-
-    if method != "morris":
-        msg = f"Screening method {method!r} not yet implemented"
-        raise NotImplementedError(msg)
-
     continuous = [f for f in factors if f.factor_type == FactorType.CONTINUOUS]
     if not continuous:
         msg = "Screening requires at least one continuous factor"
@@ -257,9 +252,32 @@ def screen(
         "names": [f.name for f in continuous],
         "bounds": [list(f.bounds) for f in continuous if f.bounds is not None],
     }
+
+    if method == "morris":
+        return _screen_morris(run_fn, problem, n_trajectories, seed)
+    if method == "sobol":
+        return _screen_sobol(run_fn, problem, n_trajectories, seed)
+
+    msg = f"Unknown screening method: {method!r}"
+    raise ValueError(msg)
+
+
+def _screen_morris(
+    run_fn: Callable[[dict[str, Any]], dict[str, float]],
+    problem: dict[str, Any],
+    n_trajectories: int,
+    seed: int,
+) -> dict[str, NDArray[np.floating[Any]]]:
+    """Morris elementary-effects screening.
+
+    Returns:
+        Mapping from observable name to mu_star array.
+    """
+    from SALib.analyze import morris as morris_analyze  # type: ignore[import-untyped]
+    from SALib.sample import morris as morris_sample  # type: ignore[import-untyped]
+
     param_values = morris_sample.sample(problem, n_trajectories, seed=seed)
 
-    # Evaluate model at each sample point
     results_by_obs: dict[str, list[float]] = {}
     for row in param_values:
         cfg = dict(zip(problem["names"], row, strict=True))
@@ -276,6 +294,41 @@ def screen(
             seed=seed,
         )
         importance[obs_name] = np.asarray(si["mu_star"], dtype=np.float64)
+
+    return importance
+
+
+def _screen_sobol(
+    run_fn: Callable[[dict[str, Any]], dict[str, float]],
+    problem: dict[str, Any],
+    n_samples: int,
+    seed: int,
+) -> dict[str, NDArray[np.floating[Any]]]:
+    """Sobol variance-based sensitivity analysis.
+
+    Returns:
+        Mapping from observable name to S1 (first-order) index array.
+    """
+    from SALib.analyze import sobol as sobol_analyze
+    from SALib.sample import sobol as sobol_sample
+
+    param_values = sobol_sample.sample(problem, n_samples, seed=seed)
+
+    results_by_obs: dict[str, list[float]] = {}
+    for row in param_values:
+        cfg = dict(zip(problem["names"], row, strict=True))
+        scores = run_fn(cfg)
+        for obs_name, val in scores.items():
+            results_by_obs.setdefault(obs_name, []).append(val)
+
+    importance: dict[str, NDArray[np.floating[Any]]] = {}
+    for obs_name, vals in results_by_obs.items():
+        si = sobol_analyze.analyze(
+            problem,
+            np.array(vals),
+            seed=seed,
+        )
+        importance[obs_name] = np.asarray(si["S1"], dtype=np.float64)
 
     return importance
 
