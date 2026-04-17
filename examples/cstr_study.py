@@ -3,6 +3,10 @@
 A multi-phase trade study over a continuous stirred-tank reactor (CSTR)
 with competing objectives: conversion, selectivity, and energy cost.
 
+Phase 1 sweeps a coarse discrete grid.  Phase 2 uses a **callable grid**
+to zoom in around the promising temperature x residence-time region
+discovered in Phase 1, demonstrating dynamic grid generation.
+
 The reactor model uses Arrhenius kinetics as closed-form ground truth —
 no external dependencies beyond numpy.
 """
@@ -20,6 +24,7 @@ from trade_study import (
     FactorType,
     Observable,
     Phase,
+    ResultsTable,
     Study,
     build_grid,
     extract_front,
@@ -157,27 +162,74 @@ observables = [
 
 # --8<-- [start:factors]
 factors = [
-    Factor("temperature", FactorType.CONTINUOUS, bounds=(320.0, 400.0)),
-    Factor("residence_time", FactorType.CONTINUOUS, bounds=(10.0, 120.0)),
-    Factor("inlet_concentration", FactorType.CONTINUOUS, bounds=(0.5, 3.0)),
-    Factor("coolant_flow", FactorType.CONTINUOUS, bounds=(0.5, 5.0)),
+    Factor("temperature", FactorType.DISCRETE, levels=[330, 350, 370, 390]),
+    Factor("residence_time", FactorType.DISCRETE, levels=[20, 50, 80, 110]),
+    Factor("inlet_concentration", FactorType.DISCRETE, levels=[0.5, 1.5, 2.5]),
+    Factor("coolant_flow", FactorType.DISCRETE, levels=[1.0, 3.0]),
 ]
 # --8<-- [end:factors]
 
-# --8<-- [start:phases]
-# Phase 1: broad exploration with Latin hypercube
-discovery_grid = build_grid(factors, method="lhs", n_samples=60, seed=42)
 
-# Phase 2: refine the top 20 designs from Phase 1
+# --8<-- [start:refine]
+def refine_grid(
+    results: ResultsTable,
+    observables_list: list[Observable],
+) -> list[dict[str, Any]]:
+    """Build a finer grid around the Pareto-optimal region.
+
+    Finds the temperature and residence-time ranges spanned by the
+    Pareto front and fills that sub-region with tighter spacing.
+
+    Args:
+        results: Phase 1 results.
+        observables_list: Observable definitions.
+
+    Returns:
+        New grid of config dicts for Phase 2.
+    """
+    dirs = [o.direction for o in observables_list]
+    front_idx = extract_front(results.scores, dirs)
+    front_cfgs = [results.configs[i] for i in front_idx]
+
+    # Bounding box of promising region (temperature x residence_time)
+    temps = [c["temperature"] for c in front_cfgs]
+    taus = [c["residence_time"] for c in front_cfgs]
+    t_lo, t_hi = min(temps), max(temps)
+    tau_lo, tau_hi = min(taus), max(taus)
+
+    fine_factors = [
+        Factor(
+            "temperature",
+            FactorType.DISCRETE,
+            levels=np.linspace(t_lo, t_hi, 5).tolist(),
+        ),
+        Factor(
+            "residence_time",
+            FactorType.DISCRETE,
+            levels=np.linspace(tau_lo, tau_hi, 5).tolist(),
+        ),
+        Factor("inlet_concentration", FactorType.DISCRETE, levels=[0.5, 1.0, 1.5]),
+        Factor("coolant_flow", FactorType.DISCRETE, levels=[1.0, 2.0, 3.0]),
+    ]
+    return build_grid(fine_factors, method="full")
+
+
+# --8<-- [end:refine]
+
+# --8<-- [start:phases]
+# Phase 1: coarse factorial sweep (96 designs)
+discovery_grid = build_grid(factors, method="full")
+
+# Phase 2: callable grid zooms in on the promising region
 phases = [
     Phase(
         name="discovery",
         grid=discovery_grid,
-        filter_fn=top_k_pareto_filter(20),
+        filter_fn=top_k_pareto_filter(40),
     ),
     Phase(
         name="refinement",
-        grid="carry",  # filled by carry-forward from Phase 1
+        grid=refine_grid,
     ),
 ]
 # --8<-- [end:phases]
@@ -212,6 +264,69 @@ def _plot_kinetics(plt: Any) -> None:
     plt.close(fig)
 
 
+def _print_results(study: Study) -> None:
+    """Print phase summaries, Pareto front table, and extreme designs."""
+    # Phase 1 summary
+    r1 = study.results("discovery")
+    print(f"Discovery: {len(r1.configs)} trials")
+
+    # Phase 2 summary
+    r2 = study.results("refinement")
+    print(f"Refinement: {len(r2.configs)} trials")
+
+    # Pareto front from the refined phase
+    front_idx = study.front("refinement")
+    print(f"\nPareto front: {len(front_idx)} / {len(r2.configs)} designs")
+    header = f"{'Temp':>6s}  {'tau':>5s}  {'C_in':>5s}  {'Cool':>5s}  |"
+    header += f"  {'Conv':>6s}  {'Select':>6s}  {'Energy':>7s}"
+    print(f"\n{header}")
+    print("-" * len(header))
+    order = sorted(front_idx, key=lambda j: -r2.scores[j][0])
+    n_show = 10
+    for i in order[:n_show]:
+        cfg = r2.configs[i]
+        conv, sel, erg = r2.scores[i]
+        print(
+            f"{cfg['temperature']:6.0f}  {cfg['residence_time']:5.0f}"
+            f"  {cfg['inlet_concentration']:5.1f}"
+            f"  {cfg['coolant_flow']:5.1f}"
+            f"  |  {conv:6.3f}  {sel:6.3f}  {erg:7.2f}"
+        )
+    if len(order) > 2 * n_show:
+        print(f"  ... {len(order) - 2 * n_show} rows omitted ...")
+        for i in order[-n_show:]:
+            cfg = r2.configs[i]
+            conv, sel, erg = r2.scores[i]
+            print(
+                f"{cfg['temperature']:6.0f}  {cfg['residence_time']:5.0f}"
+                f"  {cfg['inlet_concentration']:5.1f}"
+                f"  {cfg['coolant_flow']:5.1f}"
+                f"  |  {conv:6.3f}  {sel:6.3f}  {erg:7.2f}"
+            )
+
+    # Highlight extreme designs
+    best_conv = r2.configs[order[0]]
+    print(f"\nHighest-conversion Pareto design: {best_conv}")
+    print(
+        f"  Conv={r2.scores[order[0]][0]:.3f}"
+        f"  Select={r2.scores[order[0]][1]:.3f}"
+        f"  Energy={r2.scores[order[0]][2]:.1f}"
+    )
+
+    best_sel_idx = max(front_idx, key=lambda j: r2.scores[j][1])
+    print(f"\nHighest-selectivity Pareto design: {r2.configs[best_sel_idx]}")
+    print(
+        f"  Conv={r2.scores[best_sel_idx][0]:.3f}"
+        f"  Select={r2.scores[best_sel_idx][1]:.3f}"
+        f"  Energy={r2.scores[best_sel_idx][2]:.1f}"
+    )
+
+    # Hypervolume (higher = better spread)
+    ref = np.array([0.0, 0.0, 200.0])  # worst-case reference point
+    hv = study.front_hypervolume("refinement", ref)
+    print(f"\nHypervolume: {hv:.2f}")
+
+
 def main() -> None:
     """Run the CSTR trade study and print results."""
     # --8<-- [start:run]
@@ -225,38 +340,13 @@ def main() -> None:
     # --8<-- [end:run]
 
     # --8<-- [start:results]
-    # Phase 1 summary
-    r1 = study.results("discovery")
-    print(f"Discovery: {len(r1.configs)} trials")
-
-    # Phase 2 summary
-    r2 = study.results("refinement")
-    print(f"Refinement: {len(r2.configs)} trials")
-
-    # Pareto front
-    front_idx = study.front("refinement")
-    print(f"\nPareto front: {len(front_idx)} designs")
-    print(f"{'Conv':>8s}  {'Select':>8s}  {'Energy':>8s}")
-    for i in front_idx:
-        c, s, e = r2.scores[i]
-        print(f"{c:8.3f}  {s:8.3f}  {e:8.2f}")
-
-    # Hypervolume (higher = better spread)
-    ref = np.array([0.0, 0.0, 200.0])  # worst-case reference point
-    hv = study.front_hypervolume("refinement", ref)
-    print(f"\nHypervolume: {hv:.2f}")
-
-    # Pareto front from extract_front (standalone usage)
-    front_standalone = extract_front(
-        r2.scores,
-        [o.direction for o in observables],
-    )
-    print(f"Standalone extract_front: {len(front_standalone)} designs")
+    _print_results(study)
     # --8<-- [end:results]
 
     # --8<-- [start:plots]
     import matplotlib.pyplot as plt
 
+    r2 = study.results("refinement")
     directions = [o.direction for o in observables]
 
     # ── Domain-specific: conversion & selectivity vs temperature ───

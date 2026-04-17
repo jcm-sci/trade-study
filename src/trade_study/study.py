@@ -28,6 +28,8 @@ if TYPE_CHECKING:
         Simulator,
     )
 
+    GridCallable = Callable[[ResultsTable, list[Observable]], list[dict[str, Any]]]
+
 
 @dataclass
 class Phase:
@@ -35,7 +37,11 @@ class Phase:
 
     Attributes:
         name: Phase identifier (e.g. "discovery", "refinement").
-        grid: Explicit config list, or "adaptive" for optuna-driven search.
+        grid: Explicit config list, ``"carry"`` to re-use filtered configs
+            from the previous phase, ``"adaptive"`` for optuna-driven
+            search, or a callable ``(ResultsTable, list[Observable]) ->
+            list[dict]`` that dynamically generates the grid from the
+            previous phase's results.
         filter_fn: Optional callable that takes a ResultsTable and returns
             indices of configs to pass to the next phase. If None, phase
             is terminal.
@@ -43,7 +49,7 @@ class Phase:
     """
 
     name: str
-    grid: list[dict[str, Any]] | str
+    grid: list[dict[str, Any]] | str | GridCallable
     filter_fn: Callable[[ResultsTable, list[Observable]], NDArray[np.intp]] | None = (
         None
     )
@@ -107,8 +113,14 @@ class Study:
     _results: dict[str, ResultsTable] = field(default_factory=dict, init=False)
 
     def run(self, *, n_jobs: int = 1) -> None:
-        """Execute all phases sequentially."""
+        """Execute all phases sequentially.
+
+        Raises:
+            ValueError: If a callable grid is used on the first phase
+                (no previous results to pass).
+        """
         carry_grid: list[dict[str, Any]] | None = None
+        prev_result: ResultsTable | None = None
 
         for phase in self.phases:
             if isinstance(phase.grid, str) and phase.grid == "adaptive":
@@ -118,6 +130,21 @@ class Study:
                     self.factors,
                     self.observables,
                     n_trials=phase.n_trials,
+                )
+            elif callable(phase.grid):
+                if prev_result is None:
+                    msg = (
+                        f"Phase {phase.name!r}: callable grid requires a previous phase"
+                    )
+                    raise ValueError(msg)
+                grid = phase.grid(prev_result, self.observables)
+                result = run_grid(
+                    self.world,
+                    self.scorer,
+                    grid,
+                    self.observables,
+                    annotations=self.annotations or None,
+                    n_jobs=n_jobs,
                 )
             else:
                 grid = (
@@ -133,6 +160,7 @@ class Study:
                 )
 
             self._results[phase.name] = result
+            prev_result = result
 
             if phase.filter_fn is not None:
                 keep = phase.filter_fn(result, self.observables)

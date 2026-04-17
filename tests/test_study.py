@@ -526,3 +526,137 @@ def test_adaptive_summary(
     study.run()
     s = study.summary()
     assert s["a"]["n_trials"] == 10
+
+
+# ---------------------------------------------------------------------------
+# Callable grid mode (#94)
+# ---------------------------------------------------------------------------
+
+
+def _double_grid(
+    results: ResultsTable,
+    _observables: list[Observable],
+) -> list[dict[str, Any]]:
+    """Grid builder that creates a finer grid around carried configs.
+
+    Returns:
+        Doubled config list.
+    """
+    return [{"alpha": c["alpha"]} for c in results.configs] + [
+        {"alpha": c["alpha"] + 0.01} for c in results.configs
+    ]
+
+
+def test_callable_grid_generates_new_configs(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    observables: list[Observable],
+) -> None:
+    grid = [{"alpha": v} for v in [0.0, 0.25, 0.5, 0.75, 1.0]]
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=observables,
+        phases=[
+            Phase(
+                name="discovery",
+                grid=grid,
+                filter_fn=top_k_pareto_filter(k=3),
+            ),
+            Phase(name="refinement", grid=_double_grid),
+        ],
+    )
+    study.run()
+    r2 = study.results("refinement")
+    # _double_grid doubles the full Phase 1 results (5 → 10)
+    assert len(r2.configs) == 10
+
+
+def test_callable_grid_receives_filtered_results(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    observables: list[Observable],
+) -> None:
+    """Callable grid receives the full Phase 1 results (not filtered)."""
+    received: list[ResultsTable] = []
+
+    def capture_grid(
+        results: ResultsTable,
+        _obs: list[Observable],
+    ) -> list[dict[str, Any]]:
+        received.append(results)
+        return [{"alpha": 0.5}]
+
+    grid = [{"alpha": v} for v in [0.0, 0.25, 0.5, 0.75, 1.0]]
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=observables,
+        phases=[
+            Phase(name="p1", grid=grid, filter_fn=top_k_pareto_filter(k=3)),
+            Phase(name="p2", grid=capture_grid),
+        ],
+    )
+    study.run()
+    # The callable receives Phase 1's full results
+    assert len(received) == 1
+    assert len(received[0].configs) == 5
+
+
+def test_callable_grid_on_first_phase_raises(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    observables: list[Observable],
+) -> None:
+    def dummy_grid(
+        _results: ResultsTable,
+        _obs: list[Observable],
+    ) -> list[dict[str, Any]]:
+        return []  # pragma: no cover
+
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=observables,
+        phases=[Phase(name="bad", grid=dummy_grid)],
+    )
+    with pytest.raises(ValueError, match="callable grid requires a previous phase"):
+        study.run()
+
+
+def test_callable_grid_with_three_phases(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    observables: list[Observable],
+) -> None:
+    """Callable grid works in a three-phase chain."""
+
+    def narrow_grid(
+        _results: ResultsTable,
+        _obs: list[Observable],
+    ) -> list[dict[str, Any]]:
+        return [{"alpha": 0.4}, {"alpha": 0.5}, {"alpha": 0.6}]
+
+    grid = [{"alpha": v} for v in [0.0, 0.25, 0.5, 0.75, 1.0]]
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=observables,
+        phases=[
+            Phase(
+                name="broad",
+                grid=grid,
+                filter_fn=top_k_pareto_filter(k=3),
+            ),
+            Phase(
+                name="narrow",
+                grid=narrow_grid,
+                filter_fn=top_k_pareto_filter(k=2),
+            ),
+            Phase(name="final", grid="carry"),
+        ],
+    )
+    study.run()
+    assert len(study.results("broad").configs) == 5
+    assert len(study.results("narrow").configs) == 3
+    assert len(study.results("final").configs) <= 2
