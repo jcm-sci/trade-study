@@ -20,6 +20,7 @@ from .protocols import (
 from .runner import run_adaptive, run_grid
 from .stacking import ensemble_predict, stack_bayesian, stack_scores
 from .study import Phase, Study, top_k_pareto_filter
+from .viz import plot_calibration, plot_front, plot_parallel, plot_scores
 
 __all__ = [
     "Annotation",
@@ -42,6 +43,10 @@ __all__ = [
     "igd_plus",
     "load_results",
     "pareto_rank",
+    "plot_calibration",
+    "plot_front",
+    "plot_parallel",
+    "plot_scores",
     "reduce_factors",
     "run_adaptive",
     "run_grid",
