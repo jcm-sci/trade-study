@@ -8,7 +8,13 @@ import numpy as np
 import pytest
 
 from trade_study.design import Factor, FactorType
-from trade_study.protocols import Annotation, Direction, Observable, ResultsTable
+from trade_study.protocols import (
+    Annotation,
+    Direction,
+    Observable,
+    ResultsTable,
+    TrialResult,
+)
 from trade_study.study import Phase, Study, top_k_pareto_filter, weighted_sum_filter
 
 # ---------------------------------------------------------------------------
@@ -833,3 +839,52 @@ def test_weighted_sum_filter_in_phase(
     )
     study.run()
     assert len(study.results("refine").configs) == 2
+
+
+# ---------------------------------------------------------------------------
+# Study.run() progress callback (#77)
+# ---------------------------------------------------------------------------
+
+
+def test_study_run_callback(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    observables: list[Observable],
+) -> None:
+    """Study.run(callback=...) invokes callback for each trial."""
+    grid = [{"alpha": v} for v in [0.0, 0.25, 0.5]]
+    calls: list[tuple[int, int, TrialResult]] = []
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=observables,
+        phases=[Phase(name="p1", grid=grid)],
+    )
+    study.run(callback=lambda i, n, r: calls.append((i, n, r)))
+    assert len(calls) == 3
+
+
+def test_study_run_callback_multi_phase(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    observables: list[Observable],
+) -> None:
+    """Callback fires across multiple grid phases."""
+    grid = [{"alpha": v} for v in [0.0, 0.25, 0.5, 0.75, 1.0]]
+    calls: list[tuple[int, int, TrialResult]] = []
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=observables,
+        phases=[
+            Phase(
+                name="disc",
+                grid=grid,
+                filter_fn=top_k_pareto_filter(k=2),
+            ),
+            Phase(name="refine", grid="carry"),
+        ],
+    )
+    study.run(callback=lambda i, n, r: calls.append((i, n, r)))
+    # 5 trials in phase 1 + 2 trials in phase 2
+    assert len(calls) == 7

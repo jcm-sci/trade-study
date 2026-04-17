@@ -28,6 +28,7 @@ if TYPE_CHECKING:
         Scorer,
         Simulator,
     )
+    from .runner import ProgressCallback
 
     GridCallable = Callable[[ResultsTable, list[Observable]], list[dict[str, Any]]]
 
@@ -165,8 +166,18 @@ class Study:
 
     _results: dict[str, ResultsTable] = field(default_factory=dict, init=False)
 
-    def run(self, *, n_jobs: int = 1) -> None:
+    def run(
+        self,
+        *,
+        n_jobs: int = 1,
+        callback: ProgressCallback | None = None,
+    ) -> None:
         """Execute all phases sequentially.
+
+        Args:
+            n_jobs: Number of parallel workers for grid phases.
+            callback: Optional progress callback invoked after each trial
+                with ``(trial_index, total_trials, trial_result)``.
 
         Raises:
             ValueError: If a callable grid is used on the first phase
@@ -198,6 +209,7 @@ class Study:
                     self.observables,
                     annotations=self.annotations or None,
                     n_jobs=n_jobs,
+                    callback=callback,
                 )
             else:
                 grid = (
@@ -210,6 +222,7 @@ class Study:
                     self.observables,
                     annotations=self.annotations or None,
                     n_jobs=n_jobs,
+                    callback=callback,
                 )
 
             self._results[phase.name] = result
