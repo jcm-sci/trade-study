@@ -21,6 +21,8 @@ from trade_study import (
     Factor,
     FactorType,
     Observable,
+    Phase,
+    Study,
     build_grid,
     coverage_curve,
     ensemble_predict,
@@ -36,6 +38,7 @@ from trade_study import (
     score,
     screen,
     stack_scores,
+    top_k_pareto_filter,
 )
 
 ASSET_DIR = "docs/assets"
@@ -130,7 +133,20 @@ class BayesianRegressionSimulator:
     Each config specifies prior hyperparameters and sample size.
     The "truth" is the held-out test set; "observations" are the
     posterior predictive samples at those test points.
+
+    Args:
+        n_samples: Number of posterior predictive draws.  Fewer draws
+            give faster but noisier score estimates — useful as a cheap
+            surrogate in a multi-fidelity workflow.
     """
+
+    def __init__(self, n_samples: int = 500) -> None:
+        """Initialise the simulator.
+
+        Args:
+            n_samples: Number of posterior predictive draws.
+        """
+        self.n_samples = n_samples
 
     def generate(self, config: dict[str, Any]) -> tuple[Any, Any]:
         """Draw training data, fit posterior, and return test predictions.
@@ -155,6 +171,7 @@ class BayesianRegressionSimulator:
             y_train,
             prior_var=config["prior_var"],
             noise_scale=config["noise_scale"],
+            n_samples=self.n_samples,
         )
 
         observations = {
@@ -371,6 +388,50 @@ def _save_plots(results: Any, directions: Any, nominal: Any, empirical: Any) -> 
     # --8<-- [end:plots]
 
 
+def _run_multi_fidelity() -> None:
+    """Demonstrate multi-fidelity via Phase-level world overrides."""
+    # --8<-- [start:multifidelity]
+    # Cheap surrogate: only 50 posterior draws (fast, noisier scores)
+    cheap_world = BayesianRegressionSimulator(n_samples=50)
+    # Expensive model: 2000 posterior draws (slow, precise scores)
+    expensive_world = BayesianRegressionSimulator(n_samples=2000)
+
+    grid = build_grid(factors, method="lhs", n_samples=60, seed=42)
+    for cfg in grid:
+        cfg["n_obs"] = round(cfg["n_obs"])
+
+    study = Study(
+        world=expensive_world,
+        scorer=BayesianRegressionScorer(),
+        observables=observables,
+        phases=[
+            # Phase 1: screen 60 designs with the cheap surrogate
+            Phase(
+                name="screen",
+                grid=grid,
+                world=cheap_world,
+                filter_fn=top_k_pareto_filter(k=10),
+            ),
+            # Phase 2: validate top 10 with the expensive model
+            Phase(name="validate", grid="carry"),
+        ],
+        annotations=[compute_cost],
+    )
+    study.run()
+
+    screen_r = study.results("screen")
+    validate_r = study.results("validate")
+    print("\nMulti-fidelity study:")
+    print(f"  Screen phase:   {screen_r.scores.shape[0]} designs (50 draws)")
+    print(f"  Validate phase: {validate_r.scores.shape[0]} designs (2000 draws)")
+
+    directions = [o.direction for o in observables]
+    weights = [o.weight for o in observables]
+    front_idx = extract_front(validate_r.scores, directions, weights)
+    print(f"  Final Pareto front: {len(front_idx)} designs")
+    # --8<-- [end:multifidelity]
+
+
 def main() -> None:
     """Run the Bayesian model criticism study."""
     world = BayesianRegressionSimulator()
@@ -403,6 +464,7 @@ def main() -> None:
     nominal, empirical = _run_calibration(results, front_idx, world)
     _run_persistence(results)
     _save_plots(results, directions, nominal, empirical)
+    _run_multi_fidelity()
 
 
 if __name__ == "__main__":

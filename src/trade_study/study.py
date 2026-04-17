@@ -49,6 +49,12 @@ class Phase:
             indices of configs to pass to the next phase. If None, phase
             is terminal.
         n_trials: For adaptive mode, number of optuna trials.
+        world: Optional phase-level simulator override.  When set, this
+            phase uses *world* instead of the ``Study``-level simulator.
+            Useful for multi-fidelity workflows (cheap surrogate first,
+            expensive model later).
+        scorer: Optional phase-level scorer override.  When set, this
+            phase uses *scorer* instead of the ``Study``-level scorer.
     """
 
     name: str
@@ -57,6 +63,8 @@ class Phase:
         None
     )
     n_trials: int = 100
+    world: Simulator | None = None
+    scorer: Scorer | None = None
 
 
 def top_k_pareto_filter(
@@ -210,10 +218,14 @@ class Study:
         prev_result: ResultsTable | None = None
 
         for phase in self.phases:
+            # Resolve phase-level overrides (multi-fidelity support)
+            world = phase.world if phase.world is not None else self.world
+            scorer = phase.scorer if phase.scorer is not None else self.scorer
+
             if isinstance(phase.grid, str) and phase.grid == "adaptive":
                 result = run_adaptive(
-                    self.world,
-                    self.scorer,
+                    world,
+                    scorer,
                     self.factors,
                     self.observables,
                     n_trials=phase.n_trials,
@@ -226,8 +238,8 @@ class Study:
                     raise ValueError(msg)
                 grid = phase.grid(prev_result, self.observables)
                 result = run_grid(
-                    self.world,
-                    self.scorer,
+                    world,
+                    scorer,
                     grid,
                     self.observables,
                     annotations=self.annotations or None,
@@ -239,8 +251,8 @@ class Study:
                     phase.grid if isinstance(phase.grid, list) else (carry_grid or [])
                 )
                 result = run_grid(
-                    self.world,
-                    self.scorer,
+                    world,
+                    scorer,
                     grid,
                     self.observables,
                     annotations=self.annotations or None,

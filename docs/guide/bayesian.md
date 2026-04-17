@@ -188,13 +188,43 @@ separate evaluation from analysis:
 --8<-- "examples/bayesian_study.py:persistence"
 ```
 
+## Multi-fidelity workflow
+
+Real-world studies often have an expensive simulator — full MCMC, a
+fine-mesh CFD solver, or an agent-based epidemiological model.
+Running every candidate design at full fidelity is wasteful.  A
+multi-fidelity strategy screens many designs cheaply, then validates
+only the promising ones at high fidelity.
+
+`Phase` supports this via optional `world` and `scorer` overrides.
+When set, a phase uses its own simulator instead of the `Study`-level
+default.  Here the cheap surrogate draws only 50 posterior samples
+(fast but noisy CRPS estimates), while the validation phase draws
+2 000:
+
+```python
+--8<-- "examples/bayesian_study.py:multifidelity"
+```
+
+The `Study` orchestrates both phases: the first screens 60 designs
+with the cheap surrogate and keeps the top 10 by Pareto rank, then
+the second re-evaluates those 10 designs with the expensive model.
+
+This pattern applies whenever fidelity is a computational strategy
+rather than a design factor:
+
+- **Epidemiology** — screen surveillance designs with a deterministic
+  ODE model, validate the best with a stochastic agent-based model.
+- **Engineering** — coarse mesh for broad exploration, fine mesh for
+  the Pareto front.
+- **Forecast model grading** — fast approximate inference for
+  screening, full HMC for final assessment.
+
 ## What to try next
 
 - Swap `method="morris"` for `method="sobol"` in `screen()` for
   variance-based sensitivity indices.
 - Use `Constraint` + `feasibility_filter` to enforce
   `coverage_95 >= 0.90` before stacking.
-- Replace `run_grid` with a two-phase `Study` that screens first
-  and refines around the Pareto front.
 - Try `stack_bayesian()` on models that expose log-likelihood
   (requires `arviz`).
