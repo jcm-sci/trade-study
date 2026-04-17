@@ -135,6 +135,7 @@ def run_adaptive(
     )
 
     obs_names = [o.name for o in observables]
+    obs_weights = [o.weight for o in observables]
 
     def objective(trial: optuna.trial.Trial) -> tuple[float, ...]:
         config: dict[str, Any] = {}
@@ -152,7 +153,10 @@ def run_adaptive(
                 config[f.name] = trial.suggest_categorical(f.name, f.levels)
         truth, observations = world.generate(config)
         scores = scorer.score(truth, observations, config)
-        return tuple(scores.get(name, float("nan")) for name in obs_names)
+        return tuple(
+            scores.get(name, float("nan")) * w
+            for name, w in zip(obs_names, obs_weights, strict=True)
+        )
 
     _optuna.logging.set_verbosity(_optuna.logging.WARNING)
     study.optimize(objective, n_trials=n_trials)
