@@ -262,6 +262,15 @@ def _run_screening() -> None:
     world = CSTRSimulator()
     scorer = CSTRScorer()
 
+    # Screening requires continuous factors; define ranges matching the
+    # discrete levels so SALib can build its sample matrix.
+    screening_factors = [
+        Factor("temperature", FactorType.CONTINUOUS, bounds=(330.0, 390.0)),
+        Factor("residence_time", FactorType.CONTINUOUS, bounds=(20.0, 110.0)),
+        Factor("inlet_concentration", FactorType.CONTINUOUS, bounds=(0.5, 2.5)),
+        Factor("coolant_flow", FactorType.CONTINUOUS, bounds=(1.0, 3.0)),
+    ]
+
     def run_fn(config: dict[str, Any]) -> dict[str, float]:
         """Compose simulator + scorer for screening.
 
@@ -271,12 +280,18 @@ def _run_screening() -> None:
         truth, obs = world.generate(config)
         return scorer.score(truth, obs, config)
 
-    importance = screen(run_fn, factors, method="sobol", n_trajectories=8, seed=42)
+    importance = screen(
+        run_fn,
+        screening_factors,
+        method="sobol",
+        n_trajectories=8,
+        seed=42,
+    )
     print("Sobol screening:")
     for name, vals in importance.items():
         print(f"  {name}: {vals}")
 
-    reduced = reduce_factors(factors, importance, threshold=0.01)
+    reduced = reduce_factors(screening_factors, importance, threshold=0.01)
     print(f"\nImportant factors: {[f.name for f in reduced]}")
     # --8<-- [end:screening]
 
