@@ -22,9 +22,13 @@ from .protocols import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     import optuna
 
     from .design import Factor
+
+    ProgressCallback = Callable[[int, int, TrialResult], None]
 
 
 def _run_single(
@@ -52,6 +56,7 @@ def run_grid(
     *,
     annotations: list[Annotation] | None = None,
     n_jobs: int = 1,
+    callback: ProgressCallback | None = None,
 ) -> ResultsTable:
     """Run all configurations in a grid.
 
@@ -62,18 +67,29 @@ def run_grid(
         observables: Observable definitions (for column ordering).
         annotations: Optional external annotations (costs, etc.).
         n_jobs: Number of parallel workers (-1 for all CPUs).
+        callback: Optional progress callback invoked after each trial
+            with ``(trial_index, total_trials, trial_result)``.
 
     Returns:
         ResultsTable with scored results.
     """
+    total = len(grid)
     if n_jobs == 1:
-        results = [_run_single(world, scorer, cfg) for cfg in grid]
+        results: list[TrialResult] = []
+        for i, cfg in enumerate(grid):
+            r = _run_single(world, scorer, cfg)
+            results.append(r)
+            if callback is not None:
+                callback(i, total, r)
     else:
         from joblib import Parallel, delayed  # type: ignore[import-untyped]
 
         results = Parallel(n_jobs=n_jobs)(
             delayed(_run_single)(world, scorer, cfg) for cfg in grid
         )
+        if callback is not None:
+            for i, r in enumerate(results):
+                callback(i, total, r)
 
     obs_names = [o.name for o in observables]
     score_matrix = np.array([

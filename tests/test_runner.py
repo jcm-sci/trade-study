@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from trade_study.design import Factor, FactorType
-from trade_study.protocols import Annotation, Direction, Observable
+from trade_study.protocols import Annotation, Direction, Observable, TrialResult
 from trade_study.runner import run_adaptive, run_grid
 
 # ---------------------------------------------------------------------------
@@ -320,3 +320,41 @@ def test_run_adaptive_deterministic_seed(
     r1 = run_adaptive(world, scorer, factors, observables, n_trials=10, seed=7)
     r2 = run_adaptive(world, scorer, factors, observables, n_trials=10, seed=7)
     np.testing.assert_allclose(r1.scores, r2.scores)
+
+
+# ---------------------------------------------------------------------------
+# Progress callback (#77)
+# ---------------------------------------------------------------------------
+
+
+def test_run_grid_callback_called(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    observables: list[Observable],
+) -> None:
+    """Callback is invoked once per trial with correct arguments."""
+    grid = [{"alpha": v} for v in [0.0, 0.25, 0.5]]
+    calls: list[tuple[int, int, TrialResult]] = []
+    run_grid(
+        world,
+        scorer,
+        grid,
+        observables,
+        callback=lambda i, n, r: calls.append((i, n, r)),
+    )
+    assert len(calls) == 3
+    for i, (idx, total, result) in enumerate(calls):
+        assert idx == i
+        assert total == 3
+        assert isinstance(result, TrialResult)
+
+
+def test_run_grid_callback_none(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    observables: list[Observable],
+) -> None:
+    """No callback (default) runs without error."""
+    grid = [{"alpha": 0.5}]
+    result = run_grid(world, scorer, grid, observables)
+    assert len(result.configs) == 1
