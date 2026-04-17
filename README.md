@@ -91,8 +91,8 @@ study.run(n_jobs=-1)
 
 # 4. Inspect results
 print(study.summary())
-front = study.front()  # non-dominated configs
-hv = study.front_hypervolume(ref=...)  # hypervolume indicator
+front = study.front("benchmark")  # non-dominated config indices
+hv = study.front_hypervolume("benchmark", ref_point)  # hypervolume indicator
 ```
 
 ### Protocols
@@ -156,7 +156,7 @@ factors = [
 ]
 
 grid = build_grid(factors, method="sobol", n_samples=1024)
-si = screen(run_fn, factors, method="morris", n_eval=3000)
+si = screen(run_fn, factors, method="morris", n_trajectories=3000)
 ```
 
 ### Execution
@@ -176,9 +176,9 @@ results = run_adaptive(world, scorer, factors, observables, n_trials=600)
 ```python
 from trade_study import extract_front, hypervolume, pareto_rank
 
-front_mask = extract_front(results.scores, directions)
+front_idx = extract_front(results.scores, directions)
 ranks = pareto_rank(results.scores, directions)
-hv = hypervolume(results.scores[front_mask], directions, ref=ref_point)
+hv = hypervolume(results.scores[front_idx], ref_point, directions)
 ```
 
 ### Stacking
