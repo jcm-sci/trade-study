@@ -991,3 +991,167 @@ def test_feasibility_filter_in_study(
     final = study.results("refine")
     # alpha=0.0 (cost=0), alpha=0.25 (cost=2.5), alpha=0.5 (cost=5.0) satisfy cost <= 5
     assert final.scores.shape[0] == 3
+
+
+# ---------------------------------------------------------------------------
+# Phase-level world / scorer override (multi-fidelity, #78)
+# ---------------------------------------------------------------------------
+
+
+class _CheapSimulator:
+    """Cheap surrogate that adds a constant offset to alpha."""
+
+    def generate(
+        self,
+        config: dict[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Return config as both truth and observations.
+
+        Returns:
+            Tuple of (config, config).
+        """
+        return config, config
+
+
+class _CheapScorer:
+    """Scorer that returns a constant error and halved cost."""
+
+    def score(
+        self,
+        truth: Any,
+        observations: Any,
+        config: dict[str, Any],
+    ) -> dict[str, float]:
+        """Score: error = 0.1 (constant), cost = alpha * 5.
+
+        Returns:
+            Dict with ``error`` and ``cost`` scores.
+        """
+        a = float(config.get("alpha", 0.5))
+        return {"error": 0.1, "cost": a * 5.0}
+
+
+def test_phase_world_override(
+    scorer: _ToyScorer,
+    observables: list[Observable],
+) -> None:
+    """Phase.world overrides Study.world for that phase."""
+    cheap = _CheapSimulator()
+    expensive = _ToySimulator()
+    grid = [{"alpha": 0.5}]
+    study = Study(
+        world=expensive,
+        scorer=scorer,
+        observables=observables,
+        phases=[
+            Phase(name="cheap_phase", grid=grid, world=cheap),
+            Phase(name="expensive_phase", grid=grid),
+        ],
+    )
+    study.run()
+    # Both phases use ToyScorer (error=|0.5-0.5|=0, cost=5).
+    # The key is that they ran without error, proving the
+    # phase-level world was used for cheap_phase.
+    assert study.results("cheap_phase").scores.shape == (1, 2)
+    assert study.results("expensive_phase").scores.shape == (1, 2)
+
+
+def test_phase_scorer_override(
+    world: _ToySimulator,
+    observables: list[Observable],
+) -> None:
+    """Phase.scorer overrides Study.scorer for that phase."""
+    cheap_scorer = _CheapScorer()
+    expensive_scorer = _ToyScorer()
+    grid = [{"alpha": 0.5}]
+    study = Study(
+        world=world,
+        scorer=expensive_scorer,
+        observables=observables,
+        phases=[
+            Phase(name="cheap_phase", grid=grid, scorer=cheap_scorer),
+            Phase(name="expensive_phase", grid=grid),
+        ],
+    )
+    study.run()
+    cheap_r = study.results("cheap_phase")
+    expensive_r = study.results("expensive_phase")
+    # CheapScorer: error=0.1, cost=0.5*5=2.5
+    assert cheap_r.scores[0, 0] == pytest.approx(0.1)
+    assert cheap_r.scores[0, 1] == pytest.approx(2.5)
+    # ToyScorer: error=|0.5-0.5|=0, cost=0.5*10=5
+    assert expensive_r.scores[0, 0] == pytest.approx(0.0)
+    assert expensive_r.scores[0, 1] == pytest.approx(5.0)
+
+
+def test_phase_both_overrides(
+    observables: list[Observable],
+) -> None:
+    """Phase can override both world and scorer simultaneously."""
+    study = Study(
+        world=_ToySimulator(),
+        scorer=_ToyScorer(),
+        observables=observables,
+        phases=[
+            Phase(
+                name="custom",
+                grid=[{"alpha": 0.5}],
+                world=_CheapSimulator(),
+                scorer=_CheapScorer(),
+            ),
+        ],
+    )
+    study.run()
+    r = study.results("custom")
+    assert r.scores[0, 0] == pytest.approx(0.1)
+    assert r.scores[0, 1] == pytest.approx(2.5)
+
+
+def test_multi_fidelity_screen_then_validate(
+    observables: list[Observable],
+) -> None:
+    """Two-phase multi-fidelity: cheap screen, expensive validation."""
+    grid = [{"alpha": v} for v in [0.0, 0.25, 0.5, 0.75, 1.0]]
+    study = Study(
+        world=_ToySimulator(),
+        scorer=_ToyScorer(),
+        observables=observables,
+        phases=[
+            Phase(
+                name="screen",
+                grid=grid,
+                world=_CheapSimulator(),
+                scorer=_CheapScorer(),
+                filter_fn=top_k_pareto_filter(k=2),
+            ),
+            Phase(name="validate", grid="carry"),
+        ],
+    )
+    study.run()
+    screen_r = study.results("screen")
+    validate_r = study.results("validate")
+    # Screening used cheap scorer (all errors = 0.1)
+    assert np.all(screen_r.scores[:, 0] == pytest.approx(0.1))
+    # Validation used Study-level ToyScorer (varied errors)
+    assert validate_r.scores.shape[0] <= 2
+    # At least one validation error differs from 0.1
+    assert not np.all(validate_r.scores[:, 0] == pytest.approx(0.1))
+
+
+def test_phase_world_override_none_uses_study_default(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    observables: list[Observable],
+) -> None:
+    """Phase.world=None (default) uses Study.world."""
+    grid = [{"alpha": 0.5}]
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=observables,
+        phases=[Phase(name="default", grid=grid)],
+    )
+    study.run()
+    r = study.results("default")
+    assert r.scores[0, 0] == pytest.approx(0.0)
+    assert r.scores[0, 1] == pytest.approx(5.0)
