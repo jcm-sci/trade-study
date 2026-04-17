@@ -19,6 +19,7 @@ from typing import Any
 import numpy as np
 
 from trade_study import (
+    Constraint,
     Direction,
     Factor,
     FactorType,
@@ -28,9 +29,13 @@ from trade_study import (
     Study,
     build_grid,
     extract_front,
+    feasibility_filter,
+    igd_plus,
     plot_front,
     plot_parallel,
     plot_scores,
+    reduce_factors,
+    screen,
     top_k_pareto_filter,
 )
 
@@ -169,6 +174,22 @@ factors = [
 ]
 # --8<-- [end:factors]
 
+# --8<-- [start:constraint]
+# Require conversion >= 0.50 and energy cost <= 100
+min_conversion = Constraint(
+    name="min_conversion",
+    observable="conversion",
+    op=">=",
+    threshold=0.50,
+)
+max_energy = Constraint(
+    name="max_energy",
+    observable="energy_cost",
+    op="<=",
+    threshold=100.0,
+)
+# --8<-- [end:constraint]
+
 
 # --8<-- [start:refine]
 def refine_grid(
@@ -233,6 +254,46 @@ phases = [
     ),
 ]
 # --8<-- [end:phases]
+
+
+def _run_screening() -> None:
+    """Run Sobol screening to identify influential factors."""
+    # --8<-- [start:screening]
+    world = CSTRSimulator()
+    scorer = CSTRScorer()
+
+    # Screening requires continuous factors; define ranges matching the
+    # discrete levels so SALib can build its sample matrix.
+    screening_factors = [
+        Factor("temperature", FactorType.CONTINUOUS, bounds=(330.0, 390.0)),
+        Factor("residence_time", FactorType.CONTINUOUS, bounds=(20.0, 110.0)),
+        Factor("inlet_concentration", FactorType.CONTINUOUS, bounds=(0.5, 2.5)),
+        Factor("coolant_flow", FactorType.CONTINUOUS, bounds=(1.0, 3.0)),
+    ]
+
+    def run_fn(config: dict[str, Any]) -> dict[str, float]:
+        """Compose simulator + scorer for screening.
+
+        Returns:
+            Score dictionary from the scorer.
+        """
+        truth, obs = world.generate(config)
+        return scorer.score(truth, obs, config)
+
+    importance = screen(
+        run_fn,
+        screening_factors,
+        method="sobol",
+        n_trajectories=8,
+        seed=42,
+    )
+    print("Sobol screening:")
+    for name, vals in importance.items():
+        print(f"  {name}: {vals}")
+
+    reduced = reduce_factors(screening_factors, importance, threshold=0.01)
+    print(f"\nImportant factors: {[f.name for f in reduced]}")
+    # --8<-- [end:screening]
 
 
 def _plot_kinetics(plt: Any) -> None:
@@ -327,8 +388,133 @@ def _print_results(study: Study) -> None:
     print(f"\nHypervolume: {hv:.2f}")
 
 
+def _print_quality(study: Study) -> None:
+    """Print IGD+ and per-phase summary statistics."""
+    directions = [o.direction for o in observables]
+    r2 = study.results("refinement")
+
+    # IGD+ relative to synthetic ideal
+    r2_front_idx = study.front("refinement")
+    front_scores = r2.scores[r2_front_idx]
+    n_obj = front_scores.shape[1]
+    ideal = np.tile(np.median(front_scores, axis=0), (n_obj, 1))
+    for j, d in enumerate(directions):
+        ideal[j, j] = (
+            front_scores[:, j].min()
+            if d == Direction.MINIMIZE
+            else front_scores[:, j].max()
+        )
+    igd = igd_plus(front_scores, ideal, directions)
+    print(f"IGD+:        {igd:.4f}")
+
+    # Study.summary()
+    summary = study.summary()
+    for phase_name, stats in summary.items():
+        print(f"\n  Phase '{phase_name}':")
+        print(f"    trials={stats['n_trials']}, front={stats['n_front']}")
+        for obs_name, rng in stats["observable_ranges"].items():
+            print(f"    {obs_name}: [{rng['min']:.4f}, {rng['max']:.4f}]")
+
+
+def _run_with_callback() -> None:
+    """Demonstrate run_grid with a progress callback and n_jobs."""
+    # --8<-- [start:callback]
+    from trade_study import TrialResult, run_grid
+
+    world = CSTRSimulator()
+    scorer = CSTRScorer()
+    grid = build_grid(factors, method="full")
+
+    completed = 0
+
+    def progress(_idx: int, total: int, _result: TrialResult) -> None:
+        """Print progress every 20 trials.
+
+        Args:
+            _idx: Current trial index (unused).
+            total: Total number of trials.
+            _result: The completed trial result (unused).
+        """
+        nonlocal completed
+        completed += 1
+        if completed % 20 == 0 or completed == total:
+            print(f"  Progress: {completed}/{total} trials done")
+
+    results = run_grid(
+        world=world,
+        scorer=scorer,
+        grid=grid,
+        observables=observables,
+        n_jobs=2,
+        callback=progress,
+    )
+    print(f"\nParallel run (n_jobs=2): {results.scores.shape[0]} trials")
+    # --8<-- [end:callback]
+
+
+def _run_adaptive() -> None:
+    """Demonstrate adaptive (optuna-driven) phase."""
+    # --8<-- [start:adaptive]
+    # Adaptive phase uses optuna NSGA-II to explore the design space
+    adaptive_phases = [
+        Phase(
+            name="adaptive_search",
+            grid="adaptive",
+            n_trials=50,
+            filter_fn=top_k_pareto_filter(15),
+        ),
+        Phase(name="validate", grid="carry"),
+    ]
+
+    study = Study(
+        world=CSTRSimulator(),
+        scorer=CSTRScorer(),
+        observables=observables,
+        phases=adaptive_phases,
+        factors=factors,
+    )
+    study.run()
+
+    r = study.results("validate")
+    directions = [o.direction for o in observables]
+    front = extract_front(r.scores, directions)
+    print(f"\nAdaptive study: {r.scores.shape[0]} validated, {len(front)} on front")
+    # --8<-- [end:adaptive]
+
+
+def _run_feasibility() -> None:
+    """Demonstrate feasibility_filter with constraints."""
+    # --8<-- [start:feasibility]
+    feas_phases = [
+        Phase(
+            name="sweep",
+            grid=build_grid(factors, method="full"),
+            filter_fn=feasibility_filter(
+                constraints=[min_conversion, max_energy],
+            ),
+        ),
+        Phase(name="feasible", grid="carry"),
+    ]
+
+    study = Study(
+        world=CSTRSimulator(),
+        scorer=CSTRScorer(),
+        observables=observables,
+        phases=feas_phases,
+    )
+    study.run()
+
+    sweep_r = study.results("sweep")
+    feas_r = study.results("feasible")
+    print("\nFeasibility filter:")
+    print(f"  {sweep_r.scores.shape[0]} total -> {feas_r.scores.shape[0]} feasible")
+    # --8<-- [end:feasibility]
+
+
 def main() -> None:
     """Run the CSTR trade study and print results."""
+    _run_screening()
+
     # --8<-- [start:run]
     study = Study(
         world=CSTRSimulator(),
@@ -341,6 +527,7 @@ def main() -> None:
 
     # --8<-- [start:results]
     _print_results(study)
+    _print_quality(study)
     # --8<-- [end:results]
 
     # --8<-- [start:plots]
@@ -375,6 +562,10 @@ def main() -> None:
     print("Saved cstr_selectivity.png")
     plt.close(fig_sel2)
     # --8<-- [end:plots]
+
+    _run_with_callback()
+    _run_adaptive()
+    _run_feasibility()
 
 
 if __name__ == "__main__":

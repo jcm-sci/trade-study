@@ -29,8 +29,9 @@ design-of-experiments studies:
 | [Protocols](api/protocols.md) | Core types: `Observable`, `Direction`, `Scorer`, `Simulator`, etc. |
 | [Design](api/design.md) | `Factor`, `build_grid`, `screen`, `reduce_factors` |
 | [Runner](api/runner.md) | `run_grid`, `run_adaptive` |
-| [Study](api/study.md) | `Phase`, `Study`, `top_k_pareto_filter` |
+| [Study](api/study.md) | `Phase`, `Study`, `top_k_pareto_filter`, `weighted_sum_filter`, `feasibility_filter` |
 | [Scoring](api/scoring.md) | `score`, `coverage_curve` |
 | [Pareto](api/pareto.md) | `extract_front`, `pareto_rank`, `hypervolume`, `igd_plus` |
 | [Stacking](api/stacking.md) | `stack_bayesian`, `stack_scores`, `ensemble_predict` |
+| [Visualization](api/viz.md) | `plot_front`, `plot_parallel`, `plot_scores`, `plot_calibration` |
 | [I/O](api/io.md) | `load_results`, `save_results` |
