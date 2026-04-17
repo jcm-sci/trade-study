@@ -19,7 +19,7 @@ from .protocols import (
 )
 from .runner import run_adaptive, run_grid
 from .stacking import ensemble_predict, stack_bayesian, stack_scores
-from .study import Phase, Study, top_k_pareto_filter
+from .study import Phase, Study, top_k_pareto_filter, weighted_sum_filter
 from .viz import plot_calibration, plot_front, plot_parallel, plot_scores
 
 __all__ = [
@@ -56,4 +56,5 @@ __all__ = [
     "stack_bayesian",
     "stack_scores",
     "top_k_pareto_filter",
+    "weighted_sum_filter",
 ]

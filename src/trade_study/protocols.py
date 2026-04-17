@@ -25,10 +25,13 @@ class Observable:
     Attributes:
         name: Identifier (e.g. "coverage_95", "relWIS", "wall_seconds").
         direction: Whether lower or higher values are better.
+        weight: Relative importance for weighted Pareto analysis.
+            Default ``1.0`` preserves unweighted behavior.
     """
 
     name: str
     direction: Direction
+    weight: float = 1.0
 
 
 @runtime_checkable

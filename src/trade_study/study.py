@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from ._pareto import extract_front, hypervolume, pareto_rank
+from .protocols import Direction
 from .runner import run_adaptive, run_grid
 from .stacking import stack_scores
 
@@ -78,14 +79,66 @@ def top_k_pareto_filter(
         if objective_names is not None:
             cols = [results.observable_names.index(n) for n in objective_names]
             scores = results.scores[:, cols]
-            dirs = [o.direction for o in observables if o.name in objective_names]
+            subset = [o for o in observables if o.name in objective_names]
+            dirs = [o.direction for o in subset]
+            wts = [o.weight for o in subset]
         else:
             scores = results.scores
             dirs = [o.direction for o in observables]
+            wts = [o.weight for o in observables]
 
-        ranks = pareto_rank(scores, dirs)
+        ranks = pareto_rank(scores, dirs, wts)
         order = np.argsort(ranks)
         return order[:k]
+
+    return _filter
+
+
+def weighted_sum_filter(
+    weights: dict[str, float],
+    k: int,
+) -> Callable[[ResultsTable, list[Observable]], NDArray[np.intp]]:
+    """Create a filter that keeps the top-K configs by weighted sum.
+
+    Scalarises multiple objectives into a single score via a weighted sum
+    and keeps the ``k`` best configs.  Scores are min-max normalised
+    before weighting so that objectives on different scales are
+    comparable.  MAXIMIZE objectives are negated before normalisation so
+    that lower normalised values are always better.
+
+    Args:
+        weights: Mapping from observable name to its scalarisation weight.
+            Only the named observables are used; the rest are ignored.
+        k: Maximum number of configs to keep.
+
+    Returns:
+        Filter function compatible with ``Phase.filter_fn``.
+    """
+
+    def _filter(
+        results: ResultsTable,
+        observables: list[Observable],
+    ) -> NDArray[np.intp]:
+        obs_lookup = {o.name: o for o in observables}
+        cols = [results.observable_names.index(n) for n in weights]
+        raw = results.scores[:, cols].copy()
+
+        # Flip MAXIMIZE objectives so lower is always better
+        for j, name in enumerate(weights):
+            if obs_lookup[name].direction == Direction.MAXIMIZE:
+                raw[:, j] = -raw[:, j]
+
+        # Min-max normalise each column to [0, 1]
+        col_min = np.nanmin(raw, axis=0)
+        col_max = np.nanmax(raw, axis=0)
+        span = col_max - col_min
+        span[span == 0] = 1.0  # avoid division by zero for constant cols
+        normed = (raw - col_min) / span
+
+        w = np.array([weights[n] for n in weights])
+        scalar = normed @ w
+        order = np.argsort(scalar)
+        return order[:k].astype(np.intp)
 
     return _filter
 
@@ -184,7 +237,8 @@ class Study:
         """
         r = self._results[phase]
         dirs = [o.direction for o in self.observables]
-        return extract_front(r.scores, dirs)
+        wts = [o.weight for o in self.observables]
+        return extract_front(r.scores, dirs, wts)
 
     def front_hypervolume(
         self,
@@ -198,8 +252,9 @@ class Study:
         """
         r = self._results[phase]
         dirs = [o.direction for o in self.observables]
-        front_idx = extract_front(r.scores, dirs)
-        return hypervolume(r.scores[front_idx], ref_point, dirs)
+        wts = [o.weight for o in self.observables]
+        front_idx = extract_front(r.scores, dirs, wts)
+        return hypervolume(r.scores[front_idx], ref_point, dirs, wts)
 
     def stack(
         self,
@@ -224,7 +279,8 @@ class Study:
         out: dict[str, dict[str, Any]] = {}
         for name, r in self._results.items():
             dirs = [o.direction for o in self.observables]
-            front_idx = extract_front(r.scores, dirs)
+            wts = [o.weight for o in self.observables]
+            front_idx = extract_front(r.scores, dirs, wts)
             out[name] = {
                 "n_trials": len(r.configs),
                 "n_front": len(front_idx),

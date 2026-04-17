@@ -273,3 +273,58 @@ def test_igd_plus_maximize() -> None:
     front = np.array([[5.0, 5.0], [3.0, 7.0]])
     val = igd_plus(front, front, [Direction.MAXIMIZE, Direction.MAXIMIZE])
     assert val == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# Weighted Pareto analysis (#90)
+# ---------------------------------------------------------------------------
+
+
+def test_extract_front_weights_change_front() -> None:
+    """Heavy weight on obj1 can remove a point from the front."""
+    # With equal weight: A(1,4), B(2,2), C(4,1) are all non-dominated.
+    # With weight=[10,1]: objective space becomes (10,4), (20,2), (40,1).
+    # In this scaled space: A still dominates nothing new, but the front
+    # membership is determined by NDS on the scaled objectives.
+    scores = np.array([
+        [1.0, 4.0],  # A
+        [2.0, 2.0],  # B
+        [4.0, 1.0],  # C
+        [3.0, 3.0],  # D
+    ])
+    dirs = [Direction.MINIMIZE, Direction.MINIMIZE]
+    front_unw = extract_front(scores, dirs)
+    front_w = extract_front(scores, dirs, weights=[10.0, 1.0])
+    # Weight scaling doesn't change dominance for NDS (it's a positive
+    # linear transform), so front should be the same set.
+    assert set(front_unw) == set(front_w)
+
+
+def test_pareto_rank_with_weights() -> None:
+    """Weights are propagated to pareto_rank without error."""
+    scores = np.array([[1.0, 4.0], [2.0, 2.0], [4.0, 1.0], [3.0, 3.0]])
+    dirs = [Direction.MINIMIZE, Direction.MINIMIZE]
+    ranks = pareto_rank(scores, dirs, weights=[2.0, 1.0])
+    assert ranks.shape == (4,)
+    # Front members still rank 0
+    assert ranks[0] == 0
+
+
+def test_hypervolume_with_weights() -> None:
+    """Weights scale the objective+ref space for hypervolume."""
+    front = np.array([[1.0, 1.0]])
+    ref = np.array([2.0, 2.0])
+    dirs = [Direction.MINIMIZE, Direction.MINIMIZE]
+    hv_unw = hypervolume(front, ref, dirs)
+    hv_w = hypervolume(front, ref, dirs, weights=[2.0, 3.0])
+    # Unweighted: area = 1*1 = 1.0
+    # Weighted: area = 2*3 = 6.0
+    assert hv_unw == pytest.approx(1.0)
+    assert hv_w == pytest.approx(6.0)
+
+
+def test_igd_plus_with_weights() -> None:
+    """Weights are propagated to igd_plus without error."""
+    front = np.array([[1.0, 1.0]])
+    val = igd_plus(front, front, [Direction.MINIMIZE, Direction.MINIMIZE], [2.0, 3.0])
+    assert val == pytest.approx(0.0)

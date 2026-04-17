@@ -9,7 +9,7 @@ import pytest
 
 from trade_study.design import Factor, FactorType
 from trade_study.protocols import Annotation, Direction, Observable, ResultsTable
-from trade_study.study import Phase, Study, top_k_pareto_filter
+from trade_study.study import Phase, Study, top_k_pareto_filter, weighted_sum_filter
 
 # ---------------------------------------------------------------------------
 # Toy implementations (same pattern as test_runner)
@@ -660,3 +660,176 @@ def test_callable_grid_with_three_phases(
     assert len(study.results("broad").configs) == 5
     assert len(study.results("narrow").configs) == 3
     assert len(study.results("final").configs) <= 2
+
+
+# ---------------------------------------------------------------------------
+# weighted_sum_filter (#91)
+# ---------------------------------------------------------------------------
+
+
+def test_weighted_sum_filter_returns_callable() -> None:
+    fn = weighted_sum_filter(weights={"error": 0.8, "cost": 0.2}, k=3)
+    assert callable(fn)
+
+
+def test_weighted_sum_filter_keeps_at_most_k(
+    observables: list[Observable],
+) -> None:
+    rt = ResultsTable(
+        configs=[{"alpha": v} for v in [0.0, 0.25, 0.5, 0.75, 1.0]],
+        scores=np.array([
+            [0.5, 0.0],
+            [0.25, 2.5],
+            [0.0, 5.0],
+            [0.25, 7.5],
+            [0.5, 10.0],
+        ]),
+        observable_names=["error", "cost"],
+    )
+    fn = weighted_sum_filter(weights={"error": 0.5, "cost": 0.5}, k=3)
+    indices = fn(rt, observables)
+    assert len(indices) <= 3
+
+
+def test_weighted_sum_filter_respects_weights(
+    observables: list[Observable],
+) -> None:
+    """Heavy weight on error should prefer configs with low error."""
+    rt = ResultsTable(
+        configs=[{"alpha": v} for v in [0.0, 0.25, 0.5, 0.75, 1.0]],
+        scores=np.array([
+            [0.5, 0.0],  # idx 0: high error, low cost
+            [0.25, 2.5],  # idx 1
+            [0.0, 5.0],  # idx 2: zero error, mid cost
+            [0.25, 7.5],  # idx 3
+            [0.5, 10.0],  # idx 4: high error, high cost
+        ]),
+        observable_names=["error", "cost"],
+    )
+    fn = weighted_sum_filter(weights={"error": 0.99, "cost": 0.01}, k=1)
+    indices = fn(rt, observables)
+    # Config with error=0.0 (idx 2) should be the best
+    assert indices[0] == 2
+
+
+def test_weighted_sum_filter_maximize_direction() -> None:
+    """MAXIMIZE objectives are flipped so higher is better."""
+    obs = [
+        Observable("quality", Direction.MAXIMIZE),
+        Observable("cost", Direction.MINIMIZE),
+    ]
+    rt = ResultsTable(
+        configs=[{"a": 1}, {"a": 2}, {"a": 3}],
+        scores=np.array([
+            [10.0, 1.0],  # high quality, low cost → best
+            [5.0, 5.0],  # mid
+            [1.0, 10.0],  # low quality, high cost → worst
+        ]),
+        observable_names=["quality", "cost"],
+    )
+    fn = weighted_sum_filter(weights={"quality": 0.5, "cost": 0.5}, k=1)
+    indices = fn(rt, obs)
+    assert indices[0] == 0
+
+
+def test_weighted_sum_filter_subset_objectives() -> None:
+    """Only named objectives are used for ranking."""
+    obs = [
+        Observable("error", Direction.MINIMIZE),
+        Observable("cost", Direction.MINIMIZE),
+    ]
+    rt = ResultsTable(
+        configs=[{"a": 1}, {"a": 2}],
+        scores=np.array([
+            [1.0, 100.0],  # low error, very high cost
+            [2.0, 1.0],  # higher error, low cost
+        ]),
+        observable_names=["error", "cost"],
+    )
+    # Only weight error → idx 0 (error=1) is best despite huge cost
+    fn = weighted_sum_filter(weights={"error": 1.0}, k=1)
+    indices = fn(rt, obs)
+    assert indices[0] == 0
+
+
+def test_weighted_sum_filter_constant_column() -> None:
+    """Constant columns don't cause division by zero."""
+    obs = [Observable("m", Direction.MINIMIZE)]
+    rt = ResultsTable(
+        configs=[{"a": 1}, {"a": 2}],
+        scores=np.array([[5.0], [5.0]]),
+        observable_names=["m"],
+    )
+    fn = weighted_sum_filter(weights={"m": 1.0}, k=2)
+    indices = fn(rt, obs)
+    assert len(indices) == 2
+
+
+# ---------------------------------------------------------------------------
+# Observable.weight propagation (#90)
+# ---------------------------------------------------------------------------
+
+
+def test_front_uses_observable_weights() -> None:
+    """Study.front() propagates weights from Observable."""
+    world = _ToySimulator()
+    scorer = _ToyScorer()
+    obs = [
+        Observable("error", Direction.MINIMIZE, weight=2.0),
+        Observable("cost", Direction.MINIMIZE, weight=1.0),
+    ]
+    grid = [{"alpha": v} for v in [0.0, 0.25, 0.5, 0.75, 1.0]]
+    study = Study(
+        world=world, scorer=scorer, observables=obs, phases=[Phase("p", grid)]
+    )
+    study.run()
+    front_idx = study.front("p")
+    assert front_idx.dtype == np.intp
+    assert len(front_idx) >= 1
+
+
+def test_front_hypervolume_uses_weights() -> None:
+    """Study.front_hypervolume() propagates weights."""
+    world = _ToySimulator()
+    scorer = _ToyScorer()
+    obs = [
+        Observable("error", Direction.MINIMIZE, weight=2.0),
+        Observable("cost", Direction.MINIMIZE, weight=1.0),
+    ]
+    grid = [{"alpha": v} for v in [0.0, 0.25, 0.5, 0.75, 1.0]]
+    study = Study(
+        world=world, scorer=scorer, observables=obs, phases=[Phase("p", grid)]
+    )
+    study.run()
+    hv = study.front_hypervolume("p", np.array([2.0, 20.0]))
+    assert hv > 0.0
+
+
+def test_weighted_sum_filter_in_phase(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+) -> None:
+    """weighted_sum_filter works as Phase.filter_fn in a Study."""
+    obs = [
+        Observable("error", Direction.MINIMIZE),
+        Observable("cost", Direction.MINIMIZE),
+    ]
+    grid = [{"alpha": v} for v in [0.0, 0.25, 0.5, 0.75, 1.0]]
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=obs,
+        phases=[
+            Phase(
+                name="disc",
+                grid=grid,
+                filter_fn=weighted_sum_filter(
+                    weights={"error": 0.7, "cost": 0.3},
+                    k=2,
+                ),
+            ),
+            Phase(name="refine", grid="carry"),
+        ],
+    )
+    study.run()
+    assert len(study.results("refine").configs) == 2
