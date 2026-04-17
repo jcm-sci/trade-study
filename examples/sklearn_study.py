@@ -25,8 +25,13 @@ from trade_study import (
     Observable,
     build_grid,
     extract_front,
+    plot_front,
+    plot_parallel,
+    plot_scores,
     run_grid,
 )
+
+ASSET_DIR = "docs/assets"
 
 # ── Dataset ────────────────────────────────────────────────────────
 
@@ -127,6 +132,36 @@ factors = [
 # --8<-- [end:factors]
 
 
+def _plot_heatmap(plt: Any, results: Any) -> None:
+    """Plot best RMSE heatmap over (n_estimators, max_depth) grid."""
+    n_est_levels = sorted({c["n_estimators"] for c in results.configs})
+    depth_levels = sorted({c["max_depth"] for c in results.configs})
+
+    heat = np.full((len(depth_levels), len(n_est_levels)), np.nan)
+    for idx_cfg, cfg in enumerate(results.configs):
+        row = depth_levels.index(cfg["max_depth"])
+        col = n_est_levels.index(cfg["n_estimators"])
+        val = results.scores[idx_cfg, 0]
+        heat[row, col] = (
+            np.nanmin([heat[row, col], val]) if not np.isnan(heat[row, col]) else val
+        )
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    im = ax.imshow(heat, origin="lower", aspect="auto", cmap="YlOrRd")
+    ax.set_xticks(range(len(n_est_levels)))
+    ax.set_xticklabels(n_est_levels)
+    ax.set_yticks(range(len(depth_levels)))
+    ax.set_yticklabels(depth_levels)
+    ax.set_xlabel("n_estimators")
+    ax.set_ylabel("max_depth")
+    ax.set_title("Best RMSE per (n_estimators, max_depth)")
+    fig.colorbar(im, ax=ax, label="RMSE")
+    fig.tight_layout()
+    fig.savefig(f"{ASSET_DIR}/sklearn_heatmap.png", dpi=150, bbox_inches="tight")
+    print("\nSaved sklearn_heatmap.png")
+    plt.close(fig)
+
+
 def main() -> None:
     """Run the hyperparameter trade study and print results."""
     # --8<-- [start:run]
@@ -173,6 +208,34 @@ def main() -> None:
         f"leaves={results.scores[best, 2]:.0f}"
     )
     # --8<-- [end:results]
+
+    # --8<-- [start:plots]
+    import matplotlib.pyplot as plt
+
+    directions = [o.direction for o in observables]
+
+    # ── Domain-specific: RMSE heatmap (n_estimators vs max_depth) ──
+    _plot_heatmap(plt, results)
+
+    # ── Trade-study plots ──────────────────────────────────────────
+    # Pareto front scatter (3 objectives → pairwise matrix)
+    fig_front, _ = plot_front(results, directions)
+    fig_front.savefig(f"{ASSET_DIR}/sklearn_front.png", dpi=150, bbox_inches="tight")
+    print("Saved sklearn_front.png")
+    plt.close(fig_front)
+
+    # Parallel coordinates
+    fig_par, _ = plot_parallel(results, directions)
+    fig_par.savefig(f"{ASSET_DIR}/sklearn_parallel.png", dpi=150, bbox_inches="tight")
+    print("Saved sklearn_parallel.png")
+    plt.close(fig_par)
+
+    # RMSE strip plot
+    fig_rmse, _ = plot_scores(results, "rmse", directions)
+    fig_rmse.savefig(f"{ASSET_DIR}/sklearn_rmse.png", dpi=150, bbox_inches="tight")
+    print("Saved sklearn_rmse.png")
+    plt.close(fig_rmse)
+    # --8<-- [end:plots]
 
 
 if __name__ == "__main__":

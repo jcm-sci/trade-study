@@ -23,8 +23,13 @@ from trade_study import (
     Study,
     build_grid,
     extract_front,
+    plot_front,
+    plot_parallel,
+    plot_scores,
     top_k_pareto_filter,
 )
+
+ASSET_DIR = "docs/assets"
 
 # ── Reactor kinetics (ground truth) ────────────────────────────────
 
@@ -178,6 +183,35 @@ phases = [
 # --8<-- [end:phases]
 
 
+def _plot_kinetics(plt: Any) -> None:
+    """Plot conversion & selectivity vs temperature for several residence times."""
+    temps = np.linspace(320, 400, 200)
+    tau_values = [20.0, 60.0, 100.0]
+    fig, (ax_conv, ax_sel) = plt.subplots(1, 2, figsize=(10, 4))
+    for tau in tau_values:
+        conv = []
+        sel = []
+        for t_val in temps:
+            out = cstr_steady_state(t_val, tau, 1.5, 2.0)
+            conv.append(out["conversion"])
+            sel.append(out["selectivity"])
+        label = f"τ = {tau:.0f} s"
+        ax_conv.plot(temps, conv, label=label)
+        ax_sel.plot(temps, sel, label=label)
+    ax_conv.set_xlabel("Temperature [K]")
+    ax_conv.set_ylabel("Conversion")
+    ax_conv.set_title("Conversion vs Temperature")
+    ax_conv.legend()
+    ax_sel.set_xlabel("Temperature [K]")
+    ax_sel.set_ylabel("Selectivity")
+    ax_sel.set_title("Selectivity vs Temperature")
+    ax_sel.legend()
+    fig.tight_layout()
+    fig.savefig(f"{ASSET_DIR}/cstr_kinetics.png", dpi=150, bbox_inches="tight")
+    print("\nSaved cstr_kinetics.png")
+    plt.close(fig)
+
+
 def main() -> None:
     """Run the CSTR trade study and print results."""
     # --8<-- [start:run]
@@ -219,6 +253,38 @@ def main() -> None:
     )
     print(f"Standalone extract_front: {len(front_standalone)} designs")
     # --8<-- [end:results]
+
+    # --8<-- [start:plots]
+    import matplotlib.pyplot as plt
+
+    directions = [o.direction for o in observables]
+
+    # ── Domain-specific: conversion & selectivity vs temperature ───
+    _plot_kinetics(plt)
+
+    # ── Trade-study plots ──────────────────────────────────────────
+    # Pareto front scatter (3 objectives → pairwise matrix)
+    fig_front, _ = plot_front(r2, directions)
+    fig_front.savefig(f"{ASSET_DIR}/cstr_front.png", dpi=150, bbox_inches="tight")
+    print("Saved cstr_front.png")
+    plt.close(fig_front)
+
+    # Parallel coordinates
+    fig_par, _ = plot_parallel(r2, directions)
+    fig_par.savefig(f"{ASSET_DIR}/cstr_parallel.png", dpi=150, bbox_inches="tight")
+    print("Saved cstr_parallel.png")
+    plt.close(fig_par)
+
+    # Selectivity strip plot
+    fig_sel2, _ = plot_scores(r2, "selectivity", directions)
+    fig_sel2.savefig(
+        f"{ASSET_DIR}/cstr_selectivity.png",
+        dpi=150,
+        bbox_inches="tight",
+    )
+    print("Saved cstr_selectivity.png")
+    plt.close(fig_sel2)
+    # --8<-- [end:plots]
 
 
 if __name__ == "__main__":

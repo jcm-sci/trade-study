@@ -99,6 +99,19 @@ levels so a full factorial grid is tractable
 --8<-- "examples/sklearn_study.py:run"
 ```
 
+## Hyperparameter landscape
+
+Before looking at the Pareto front, it helps to see how RMSE varies
+across the two most influential hyperparameters.  The heatmap below
+shows the **best RMSE** achieved at each (n_estimators, max_depth)
+combination, minimised over learning rate and subsample fraction:
+
+![RMSE heatmap](../assets/sklearn_heatmap.png)
+
+Deeper trees with more estimators push RMSE down, but at a cost in
+training time and model size — which is exactly the trade-off the
+Pareto front quantifies.
+
 ## Inspect the Pareto front
 
 `extract_front` identifies the subset of designs where **no other
@@ -114,6 +127,29 @@ The Pareto front typically contains 10–15 designs out of 192.
 A practitioner can then choose based on their priorities — e.g. pick
 the lowest-RMSE design if accuracy is paramount, or the fastest design
 that still meets an RMSE threshold.
+
+### Pareto front scatter matrix
+
+![Pareto front](../assets/sklearn_front.png)
+
+Each dot is one hyperparameter combination; highlighted points lie on
+the Pareto front.  The off-diagonal panels expose pairwise trade-offs
+between RMSE, training time, and leaf count.
+
+### Parallel coordinates
+
+![Parallel coordinates](../assets/sklearn_parallel.png)
+
+Every line is one design, coloured by Pareto membership.  This view
+makes it easy to spot which hyperparameter ranges the front occupies.
+
+### RMSE strip plot
+
+![RMSE strip plot](../assets/sklearn_rmse.png)
+
+Scores for each design, split by whether it is on the Pareto front.
+Front members cluster at the low end of RMSE, confirming they are
+among the best predictive configurations.
 
 ## What to try next
 
