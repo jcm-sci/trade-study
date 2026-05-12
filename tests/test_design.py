@@ -7,7 +7,14 @@ from typing import Any
 import numpy as np
 import pytest
 
-from trade_study.design import Factor, FactorType, build_grid, reduce_factors, screen
+from trade_study.design import (
+    Factor,
+    FactorConstraint,
+    FactorType,
+    build_grid,
+    reduce_factors,
+    screen,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -436,3 +443,149 @@ def test_reduce_high_threshold_drops_all(continuous_factors: list[Factor]) -> No
     importance = {"y": np.array([0.1, 0.1])}
     kept = reduce_factors(continuous_factors, importance, threshold=0.5)
     assert len(kept) == 0
+
+
+# ---------------------------------------------------------------------------
+# FactorConstraint — coupled design-time constraints (#103)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def coupled_factors() -> list[Factor]:
+    """Two coupled categorical factors used in constraint tests.
+
+    Returns:
+        ``method`` in {``elbo_only``, ``mixed``, ``full``} and
+        ``patience`` in {1, 2, 3, 5, 10}.
+    """
+    return [
+        Factor(
+            "method",
+            FactorType.CATEGORICAL,
+            levels=["elbo_only", "mixed", "full"],
+        ),
+        Factor("patience", FactorType.DISCRETE, levels=[1, 2, 3, 5, 10]),
+    ]
+
+
+def _elbo_short_patience(cfg: dict[str, Any]) -> bool:
+    """Toy coupled rule used across constraint tests.
+
+    Args:
+        cfg: Candidate config dict.
+
+    Returns:
+        ``True`` unless ``method == "elbo_only"`` with ``patience > 2``.
+    """
+    return cfg["method"] != "elbo_only" or cfg["patience"] <= 2
+
+
+def test_factor_constraint_is_feasible() -> None:
+    c = FactorConstraint(_elbo_short_patience, name="elbo_short_patience")
+    assert c.is_feasible({"method": "elbo_only", "patience": 1})
+    assert not c.is_feasible({"method": "elbo_only", "patience": 5})
+    assert c.is_feasible({"method": "mixed", "patience": 10})
+
+
+def test_full_factorial_filters_constraints(coupled_factors: list[Factor]) -> None:
+    grid = build_grid(
+        coupled_factors,
+        method="full",
+        constraints=[FactorConstraint(_elbo_short_patience)],
+    )
+    # 3 * 5 = 15 unconstrained; reject elbo_only with patience in {3, 5, 10}.
+    assert len(grid) == 15 - 3
+    for cfg in grid:
+        assert _elbo_short_patience(cfg)
+
+
+def test_full_factorial_no_constraints_unchanged(
+    coupled_factors: list[Factor],
+) -> None:
+    base = build_grid(coupled_factors, method="full")
+    same = build_grid(coupled_factors, method="full", constraints=[])
+    assert base == same
+
+
+def test_full_factorial_all_rejected_returns_empty(
+    coupled_factors: list[Factor],
+) -> None:
+    grid = build_grid(
+        coupled_factors,
+        method="full",
+        constraints=[FactorConstraint(lambda _c: False, name="reject_all")],
+    )
+    assert grid == []
+
+
+@pytest.mark.parametrize("method", ["sobol", "halton", "lhs"])
+def test_qmc_lhs_returns_n_feasible(
+    coupled_factors: list[Factor],
+    method: str,
+) -> None:
+    n = 32
+    grid = build_grid(
+        coupled_factors,
+        method=method,
+        n_samples=n,
+        seed=0,
+        constraints=[FactorConstraint(_elbo_short_patience)],
+    )
+    assert len(grid) == n
+    for cfg in grid:
+        assert _elbo_short_patience(cfg)
+
+
+@pytest.mark.parametrize("method", ["sobol", "halton", "lhs"])
+def test_qmc_lhs_constrained_deterministic(
+    coupled_factors: list[Factor],
+    method: str,
+) -> None:
+    constraints = [FactorConstraint(_elbo_short_patience)]
+    g1 = build_grid(
+        coupled_factors,
+        method=method,
+        n_samples=16,
+        seed=11,
+        constraints=constraints,
+    )
+    g2 = build_grid(
+        coupled_factors,
+        method=method,
+        n_samples=16,
+        seed=11,
+        constraints=constraints,
+    )
+    assert g1 == g2
+
+
+def test_qmc_constraints_raise_on_infeasible(
+    coupled_factors: list[Factor],
+) -> None:
+    with pytest.raises(ValueError, match="rejected too many"):
+        build_grid(
+            coupled_factors,
+            method="sobol",
+            n_samples=8,
+            seed=0,
+            constraints=[FactorConstraint(lambda _c: False, name="reject_all")],
+        )
+
+
+def test_qmc_low_feasibility_warns() -> None:
+    """A very tight constraint should still succeed but warn."""
+    factors = [
+        Factor("x", FactorType.CONTINUOUS, bounds=(0.0, 1.0)),
+    ]
+    # Accept only configs in the bottom 5% of x's range — feasibility ~0.05.
+    constraints = [FactorConstraint(lambda c: c["x"] < 0.05, name="tight")]
+    with pytest.warns(UserWarning, match="low feasibility ratio"):
+        grid = build_grid(
+            factors,
+            method="sobol",
+            n_samples=4,
+            seed=0,
+            constraints=constraints,
+        )
+    assert len(grid) == 4
+    assert all(cfg["x"] < 0.05 for cfg in grid)

@@ -6,6 +6,8 @@ Experimental design: factors, grids, and screening.
 
 ::: trade_study.Factor
 
+::: trade_study.FactorConstraint
+
 ::: trade_study.build_grid
 
 ::: trade_study.reduce_factors
