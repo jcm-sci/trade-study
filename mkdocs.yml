@@ -74,5 +74,6 @@ nav:
       - Scoring: api/scoring.md
       - Pareto: api/pareto.md
       - Stacking: api/stacking.md
+      - Surrogate: api/surrogate.md
       - Visualization: api/viz.md
       - I/O: api/io.md

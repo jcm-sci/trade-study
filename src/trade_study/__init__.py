@@ -35,6 +35,7 @@ from .study import (
     top_k_pareto_filter,
     weighted_sum_filter,
 )
+from .surrogate import SurrogateModel, fit_surrogate
 from .viz import plot_calibration, plot_front, plot_parallel, plot_scores
 
 __all__ = [
@@ -51,6 +52,7 @@ __all__ = [
     "Scorer",
     "Simulator",
     "Study",
+    "SurrogateModel",
     "TrialResult",
     "__version__",
     "build_grid",
@@ -58,6 +60,7 @@ __all__ = [
     "ensemble_predict",
     "extract_front",
     "feasibility_filter",
+    "fit_surrogate",
     "hypervolume",
     "igd_plus",
     "load_results",

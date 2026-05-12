@@ -73,8 +73,11 @@ parallel = [
 viz = [
   "matplotlib>=3.6",
 ]
+surrogate = [
+  "scikit-learn>=1.3",
+]
 all = [
-  "trade-study[scoring,pareto,stacking,design,adaptive,parallel,viz]",
+  "trade-study[scoring,pareto,stacking,design,adaptive,parallel,viz,surrogate]",
 ]
 examples = [
   "scikit-learn>=1.3",
