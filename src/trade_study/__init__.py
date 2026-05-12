@@ -20,12 +20,13 @@ from .protocols import (
     Constraint,
     Direction,
     Observable,
+    PartialEvaluator,
     ResultsTable,
     Scorer,
     Simulator,
     TrialResult,
 )
-from .runner import run_adaptive, run_grid
+from .runner import run_adaptive, run_grid, run_hyperband, run_successive_halving
 from .stacking import ensemble_predict, stack_bayesian, stack_scores
 from .study import (
     Phase,
@@ -44,6 +45,7 @@ __all__ = [
     "FactorConstraint",
     "FactorType",
     "Observable",
+    "PartialEvaluator",
     "Phase",
     "ResultsTable",
     "Scorer",
@@ -67,6 +69,8 @@ __all__ = [
     "reduce_factors",
     "run_adaptive",
     "run_grid",
+    "run_hyperband",
+    "run_successive_halving",
     "save_results",
     "score",
     "screen",

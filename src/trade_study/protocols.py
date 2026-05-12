@@ -114,6 +114,41 @@ class Simulator(Protocol):
 
 
 @runtime_checkable
+class PartialEvaluator(Protocol):
+    """Protocol for incrementally-evaluable trials.
+
+    Used by successive-halving / Hyperband (#104) to discard unpromising
+    configurations after a small fraction of their full budget. The budget
+    is opaque to the runner — it may be epochs, MCMC iterations, dataset
+    fractions, mesh resolutions, or seconds. Implementations should
+    interpret ``budget`` as "run from scratch up to this much work" so a
+    trial promoted from rung *r* to rung *r+1* is re-trained at the larger
+    budget rather than continuing from the smaller one (this matches the
+    canonical Hyperband formulation; implementations are free to cache
+    intermediate state internally as an optimization).
+    """
+
+    def evaluate(
+        self,
+        config: dict[str, Any],
+        budget: float,
+    ) -> dict[str, float]:
+        """Evaluate ``config`` at the given ``budget`` and return observables.
+
+        Args:
+            config: Dictionary of factor values defining this trial.
+            budget: Resource budget (epochs, iterations, dataset fraction,
+                wall seconds, ...). Larger means a higher-fidelity
+                evaluation.
+
+        Returns:
+            Mapping from observable name to scalar value, including the
+            metric used for early-stopping.
+        """
+        ...
+
+
+@runtime_checkable
 class Scorer(Protocol):
     """Protocol for scoring model output against truth."""
 

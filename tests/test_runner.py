@@ -9,7 +9,12 @@ import pytest
 
 from trade_study.design import Factor, FactorType
 from trade_study.protocols import Annotation, Direction, Observable, TrialResult
-from trade_study.runner import run_adaptive, run_grid
+from trade_study.runner import (
+    run_adaptive,
+    run_grid,
+    run_hyperband,
+    run_successive_halving,
+)
 
 # ---------------------------------------------------------------------------
 # Toy implementations
@@ -358,3 +363,180 @@ def test_run_grid_callback_none(
     grid = [{"alpha": 0.5}]
     result = run_grid(world, scorer, grid, observables)
     assert len(result.configs) == 1
+
+
+# ---------------------------------------------------------------------------
+# Successive halving / Hyperband (#104)
+# ---------------------------------------------------------------------------
+
+
+class _ToyPartialEvaluator:
+    """Toy PartialEvaluator: loss decays as `target * exp(-budget/scale)` + noise.
+
+    Trials with smaller `target` reach lower loss faster, so they should
+    survive successive halving.
+    """
+
+    def evaluate(
+        self,
+        config: dict[str, Any],
+        budget: float,
+    ) -> dict[str, float]:
+        """Return a budget-decayed loss for ``config``.
+
+        Args:
+            config: Must contain ``target`` (asymptotic loss).
+            budget: Resource budget; larger ⇒ better fidelity.
+
+        Returns:
+            Dict with ``loss`` and ``budget`` observables.
+        """
+        target = float(config["target"])
+        loss = target + np.exp(-budget / 5.0)
+        return {"loss": loss, "budget": float(budget)}
+
+
+def test_successive_halving_keeps_best() -> None:
+    sim = _ToyPartialEvaluator()
+    trials = [{"target": t} for t in [0.1, 0.5, 0.9, 0.05, 0.7, 0.3, 0.6, 0.2, 0.8]]
+    results = run_successive_halving(
+        trials,
+        sim,
+        rungs=[1.0, 3.0, 9.0],
+        eta=3.0,
+        metric="loss",
+        mode="min",
+    )
+    # Final rung should contain ceil(ceil(9/3)/3) = 1 trial,
+    # which must be the lowest target.
+    final = [m for m in results.metadata if m["rung"] == 2]
+    assert len(final) == 1
+    survivor_idx = final[0]["trial_index"]
+    assert trials[survivor_idx]["target"] == pytest.approx(0.05)
+
+
+def test_successive_halving_row_count() -> None:
+    sim = _ToyPartialEvaluator()
+    trials = [{"target": t / 10} for t in range(9)]
+    results = run_successive_halving(
+        trials,
+        sim,
+        rungs=[1.0, 3.0, 9.0],
+        eta=3.0,
+        metric="loss",
+        mode="min",
+    )
+    # Rung sizes: 9, 3, 1 → 13 rows.
+    assert len(results.configs) == 9 + 3 + 1
+    assert results.scores.shape == (13, 2)
+
+
+def test_successive_halving_records_metadata() -> None:
+    sim = _ToyPartialEvaluator()
+    trials = [{"target": 0.1}, {"target": 0.9}]
+    results = run_successive_halving(
+        trials,
+        sim,
+        rungs=[1.0, 3.0],
+        eta=2.0,
+        metric="loss",
+        mode="min",
+    )
+    keys = set(results.metadata[0])
+    assert {"rung", "budget", "trial_index", "promoted", "wall_seconds"} <= keys
+    promoted_first_rung = [
+        m for m in results.metadata if m["rung"] == 0 and m["promoted"]
+    ]
+    assert len(promoted_first_rung) == 1
+
+
+def test_successive_halving_max_mode() -> None:
+    sim = _ToyPartialEvaluator()
+    trials = [{"target": t} for t in [0.1, 0.9]]
+    # In max mode, the higher loss wins.
+    results = run_successive_halving(
+        trials,
+        sim,
+        rungs=[1.0, 3.0],
+        eta=2.0,
+        metric="loss",
+        mode="max",
+    )
+    final = [m for m in results.metadata if m["rung"] == 1]
+    assert len(final) == 1
+    assert trials[final[0]["trial_index"]]["target"] == pytest.approx(0.9)
+
+
+def test_successive_halving_validation() -> None:
+    sim = _ToyPartialEvaluator()
+    trials = [{"target": 0.1}]
+    with pytest.raises(ValueError, match="trials must be non-empty"):
+        run_successive_halving([], sim, rungs=[1.0], metric="loss")
+    with pytest.raises(ValueError, match="ascending"):
+        run_successive_halving(trials, sim, rungs=[3.0, 1.0], metric="loss")
+    with pytest.raises(ValueError, match="positive"):
+        run_successive_halving(trials, sim, rungs=[0.0], metric="loss")
+    with pytest.raises(ValueError, match="eta must be > 1"):
+        run_successive_halving(trials, sim, rungs=[1.0], eta=1.0, metric="loss")
+    with pytest.raises(ValueError, match="metric must be"):
+        run_successive_halving(trials, sim, rungs=[1.0], metric="")
+    with pytest.raises(ValueError, match="mode must be"):
+        run_successive_halving(trials, sim, rungs=[1.0], metric="loss", mode="bogus")
+    with pytest.raises(ValueError, match="rungs must contain"):
+        run_successive_halving(trials, sim, rungs=[], metric="loss")
+
+
+def test_successive_halving_missing_metric() -> None:
+    class _NoMetric:
+        def evaluate(self, _config: dict[str, Any], _budget: float) -> dict[str, float]:
+            return {"other": 1.0}
+
+    with pytest.raises(KeyError, match="did not return metric"):
+        run_successive_halving(
+            [{"target": 0.1}],
+            _NoMetric(),
+            rungs=[1.0],
+            metric="loss",
+        )
+
+
+def test_hyperband_runs_all_brackets() -> None:
+    sim = _ToyPartialEvaluator()
+    rng = np.random.default_rng(0)
+
+    def factory(bracket_idx: int, n: int) -> list[dict[str, Any]]:
+        # Bracket-seeded random targets so brackets explore different points.
+        local_rng = np.random.default_rng(bracket_idx + 1)
+        return [{"target": float(local_rng.uniform(0.0, 1.0))} for _ in range(n)]
+
+    _ = rng  # silence unused
+    results = run_hyperband(
+        factory,
+        sim,
+        max_budget=9.0,
+        eta=3.0,
+        metric="loss",
+        mode="min",
+    )
+    brackets_seen = {m["bracket"] for m in results.metadata}
+    # eta=3, R=9 → s_max = 2 → 3 brackets (s = 2, 1, 0).
+    assert brackets_seen == {0, 1, 2}
+    assert "loss" in results.observable_names
+
+
+def test_hyperband_validation() -> None:
+    sim = _ToyPartialEvaluator()
+
+    def factory(_b: int, _n: int) -> list[dict[str, Any]]:
+        return [{"target": 0.1}]
+
+    with pytest.raises(ValueError, match="max_budget must be positive"):
+        run_hyperband(factory, sim, max_budget=0.0, metric="loss")
+    with pytest.raises(ValueError, match="eta must be > 1"):
+        run_hyperband(factory, sim, max_budget=9.0, eta=1.0, metric="loss")
+
+
+def test_partial_evaluator_protocol_runtime_check() -> None:
+    from trade_study.protocols import PartialEvaluator
+
+    assert isinstance(_ToyPartialEvaluator(), PartialEvaluator)
