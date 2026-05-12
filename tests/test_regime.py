@@ -1,0 +1,266 @@
+"""Tests for regime-conditional surrogate (#105)."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+import numpy as np
+import pytest
+
+from trade_study import (
+    Direction,
+    Factor,
+    FactorType,
+    Observable,
+    RegimeSurrogate,
+    build_grid,
+    fit_regime_surrogate,
+    run_grid,
+)
+
+if TYPE_CHECKING:
+    from trade_study.protocols import ResultsTable
+
+
+class _PassWorld:
+    """Trivial simulator: passes config through."""
+
+    def generate(
+        self,
+        config: dict[str, object],
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        return config, config
+
+
+class _RegimeScorer:
+    """Scorer where ``loss = (lr - 0.1*n)**2``.
+
+    The optimal ``lr`` is a linear function of regime feature ``n``.
+    """
+
+    def score(
+        self,
+        truth: object,
+        observations: dict[str, object],
+        config: dict[str, object],
+    ) -> dict[str, float]:
+        del truth, config
+        n = float(observations["n"])
+        lr = float(observations["lr"])
+        return {"loss": (lr - 0.1 * n) ** 2}
+
+
+@pytest.fixture
+def regime_factor() -> Factor:
+    return Factor("n", FactorType.CONTINUOUS, bounds=(0.0, 10.0))
+
+
+@pytest.fixture
+def design_factor() -> Factor:
+    return Factor("lr", FactorType.CONTINUOUS, bounds=(0.0, 1.0))
+
+
+def _make_results(
+    regime_factor: Factor,
+    design_factor: Factor,
+    n: int = 64,
+    seed: int = 0,
+) -> ResultsTable:
+    grid = build_grid(
+        [regime_factor, design_factor],
+        method="sobol",
+        n_samples=n,
+        seed=seed,
+    )
+    obs = [Observable("loss", Direction.MINIMIZE)]
+    return run_grid(_PassWorld(), _RegimeScorer(), grid, obs)
+
+
+# ---------------------------------------------------------------------------
+# Validation
+# ---------------------------------------------------------------------------
+
+
+def test_fit_requires_regime_factors(
+    regime_factor: Factor,
+    design_factor: Factor,
+) -> None:
+    results = _make_results(regime_factor, design_factor, n=8)
+    with pytest.raises(ValueError, match="regime_factors must be non-empty"):
+        fit_regime_surrogate(results, [], [design_factor])
+
+
+def test_fit_rejects_overlapping_names(
+    regime_factor: Factor,
+    design_factor: Factor,
+) -> None:
+    results = _make_results(regime_factor, design_factor, n=8)
+    dup = Factor("n", FactorType.CONTINUOUS, bounds=(0.0, 10.0))
+    with pytest.raises(ValueError, match="appear in both"):
+        fit_regime_surrogate(results, [regime_factor], [dup])
+
+
+# ---------------------------------------------------------------------------
+# Predict / uncertainty
+# ---------------------------------------------------------------------------
+
+
+def test_predict_returns_observable_dict(
+    regime_factor: Factor,
+    design_factor: Factor,
+) -> None:
+    results = _make_results(regime_factor, design_factor, n=32)
+    sur = fit_regime_surrogate(
+        results,
+        [regime_factor],
+        [design_factor],
+        method="rf",
+        seed=0,
+    )
+    assert isinstance(sur, RegimeSurrogate)
+    pred = sur.predict({"n": 5.0}, {"lr": 0.5})
+    assert set(pred) == {"loss"}
+    assert isinstance(pred["loss"], float)
+
+
+def test_predict_batch_shape(
+    regime_factor: Factor,
+    design_factor: Factor,
+) -> None:
+    results = _make_results(regime_factor, design_factor, n=32)
+    sur = fit_regime_surrogate(
+        results,
+        [regime_factor],
+        [design_factor],
+        method="rf",
+        seed=0,
+    )
+    pred = sur.predict_batch({"n": 5.0}, [{"lr": x} for x in [0.0, 0.25, 0.75]])
+    assert pred["loss"].shape == (3,)
+
+
+def test_gp_uncertainty_returns_floats(
+    regime_factor: Factor,
+    design_factor: Factor,
+) -> None:
+    results = _make_results(regime_factor, design_factor, n=32)
+    sur = fit_regime_surrogate(
+        results,
+        [regime_factor],
+        [design_factor],
+        method="gp",
+        seed=0,
+    )
+    unc = sur.uncertainty({"n": 5.0}, {"lr": 0.5})
+    assert set(unc) == {"loss"}
+    assert unc["loss"] >= 0.0
+
+
+def test_rf_uncertainty_raises(
+    regime_factor: Factor,
+    design_factor: Factor,
+) -> None:
+    results = _make_results(regime_factor, design_factor, n=16)
+    sur = fit_regime_surrogate(
+        results,
+        [regime_factor],
+        [design_factor],
+        method="rf",
+        seed=0,
+    )
+    with pytest.raises(NotImplementedError):
+        sur.uncertainty({"n": 5.0}, {"lr": 0.5})
+
+
+# ---------------------------------------------------------------------------
+# Recommend
+# ---------------------------------------------------------------------------
+
+
+def test_recommend_tracks_regime(
+    regime_factor: Factor,
+    design_factor: Factor,
+) -> None:
+    """At ``n=2`` the optimum is ``lr~=0.2``; at ``n=8`` it is ``lr~=0.8``."""
+    results = _make_results(regime_factor, design_factor, n=128, seed=0)
+    sur = fit_regime_surrogate(
+        results,
+        [regime_factor],
+        [design_factor],
+        method="rf",
+        seed=0,
+        n_estimators=200,
+    )
+    low = sur.recommend({"n": 2.0}, objective="loss", n_candidates=128, seed=1)
+    high = sur.recommend({"n": 8.0}, objective="loss", n_candidates=128, seed=1)
+    assert low["lr"] < high["lr"]
+    assert low["lr"] == pytest.approx(0.2, abs=0.2)
+    assert high["lr"] == pytest.approx(0.8, abs=0.2)
+
+
+def test_recommend_mode_max_inverts_choice(
+    regime_factor: Factor,
+    design_factor: Factor,
+) -> None:
+    results = _make_results(regime_factor, design_factor, n=64, seed=0)
+    sur = fit_regime_surrogate(
+        results,
+        [regime_factor],
+        [design_factor],
+        method="rf",
+        seed=0,
+    )
+    pool = [{"lr": 0.1}, {"lr": 0.5}, {"lr": 0.9}]
+    best_min = sur.recommend({"n": 5.0}, objective="loss", mode="min", candidates=pool)
+    best_max = sur.recommend({"n": 5.0}, objective="loss", mode="max", candidates=pool)
+    preds = sur.predict_batch({"n": 5.0}, pool)["loss"]
+    assert best_min["lr"] == pool[int(np.argmin(preds))]["lr"]
+    assert best_max["lr"] == pool[int(np.argmax(preds))]["lr"]
+
+
+def test_recommend_rejects_unknown_objective(
+    regime_factor: Factor,
+    design_factor: Factor,
+) -> None:
+    results = _make_results(regime_factor, design_factor, n=16)
+    sur = fit_regime_surrogate(
+        results,
+        [regime_factor],
+        [design_factor],
+        method="rf",
+        seed=0,
+    )
+    with pytest.raises(ValueError, match="not a fitted observable"):
+        sur.recommend({"n": 5.0}, objective="bogus")
+
+
+def test_recommend_rejects_bad_mode(
+    regime_factor: Factor,
+    design_factor: Factor,
+) -> None:
+    results = _make_results(regime_factor, design_factor, n=16)
+    sur = fit_regime_surrogate(
+        results,
+        [regime_factor],
+        [design_factor],
+        method="rf",
+        seed=0,
+    )
+    with pytest.raises(ValueError, match="mode must be"):
+        sur.recommend({"n": 5.0}, objective="loss", mode="bogus")
+
+
+def test_recommend_rejects_empty_candidates(
+    regime_factor: Factor,
+    design_factor: Factor,
+) -> None:
+    results = _make_results(regime_factor, design_factor, n=16)
+    sur = fit_regime_surrogate(
+        results,
+        [regime_factor],
+        [design_factor],
+        method="rf",
+        seed=0,
+    )
+    with pytest.raises(ValueError, match="no candidates"):
+        sur.recommend({"n": 5.0}, objective="loss", candidates=[])

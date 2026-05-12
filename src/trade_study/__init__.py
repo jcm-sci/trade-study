@@ -26,6 +26,7 @@ from .protocols import (
     Simulator,
     TrialResult,
 )
+from .regime import RegimeSurrogate, fit_regime_surrogate
 from .runner import run_adaptive, run_grid, run_hyperband, run_successive_halving
 from .stacking import ensemble_predict, stack_bayesian, stack_scores
 from .study import (
@@ -48,6 +49,7 @@ __all__ = [
     "Observable",
     "PartialEvaluator",
     "Phase",
+    "RegimeSurrogate",
     "ResultsTable",
     "Scorer",
     "Simulator",
@@ -60,6 +62,7 @@ __all__ = [
     "ensemble_predict",
     "extract_front",
     "feasibility_filter",
+    "fit_regime_surrogate",
     "fit_surrogate",
     "hypervolume",
     "igd_plus",

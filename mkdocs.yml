@@ -75,5 +75,6 @@ nav:
       - Pareto: api/pareto.md
       - Stacking: api/stacking.md
       - Surrogate: api/surrogate.md
+      - Regime Surrogate: api/regime.md
       - Visualization: api/viz.md
       - I/O: api/io.md
