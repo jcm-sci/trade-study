@@ -70,7 +70,7 @@ class _FactorEncoder:
             if f.factor_type == FactorType.CONTINUOUS:
                 cols.append(f.name)
             else:
-                assert f.levels is not None  # noqa: S101 -- enforced by Factor
+                assert f.levels is not None  # ruff: ignore[assert] -- enforced by Factor
                 cols.extend(f"{f.name}={lvl!r}" for lvl in f.levels)
         return cls(factors=factors, column_names=cols)
 
@@ -99,11 +99,11 @@ class _FactorEncoder:
                     msg = f"config is missing factor {f.name!r}"
                     raise KeyError(msg)
                 if f.factor_type == FactorType.CONTINUOUS:
-                    assert f.bounds is not None  # noqa: S101 -- enforced
+                    assert f.bounds is not None  # ruff: ignore[assert] -- enforced
                     lo, hi = f.bounds
                     row.append((float(cfg[f.name]) - lo) / (hi - lo))
                 else:
-                    assert f.levels is not None  # noqa: S101 -- enforced
+                    assert f.levels is not None  # ruff: ignore[assert] -- enforced
                     value = cfg[f.name]
                     if value not in f.levels:
                         msg = (
@@ -267,7 +267,7 @@ def fit_surrogate(
     )
 
 
-def _make_estimator(method: str, *, seed: int, n_estimators: int) -> Any:  # noqa: ANN401
+def _make_estimator(method: str, *, seed: int, n_estimators: int) -> Any:  # ruff: ignore[any-type]
     """Construct an unfitted scikit-learn estimator for the requested method.
 
     Args:
