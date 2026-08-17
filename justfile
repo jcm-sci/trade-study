@@ -6,16 +6,16 @@ default: lint test
 
 # Auto-format all Python sources.
 format:
-	uvx ruff format --preview
+	uv run ruff format --preview src tests
 
 # Lint-fix all Python sources.
 check:
-	uvx ruff check --preview --fix
+	uv run ruff check --preview --fix src tests
 
-# Check formatting + lint without modifying files.
+# Check formatting + lint without modifying files (matches CI).
 lint:
-	uvx ruff format --preview --check
-	uvx ruff check --preview --no-fix
+	uv run ruff format --preview --check src tests
+	uv run ruff check --preview src tests
 
 # ── Tests ────────────────────────────────────────────────────────────
 
