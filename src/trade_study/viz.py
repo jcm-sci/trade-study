@@ -29,7 +29,7 @@ def _require_matplotlib() -> None:
         ImportError: If matplotlib is not available.
     """
     try:
-        import matplotlib as mpl  # noqa: F401
+        import matplotlib as mpl  # ruff: ignore[unused-import]
     except ImportError as exc:
         msg = (
             "matplotlib is required for visualization. "
