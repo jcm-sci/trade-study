@@ -78,3 +78,4 @@ nav:
       - Regime Surrogate: api/regime.md
       - Visualization: api/viz.md
       - I/O: api/io.md
+  - Citation: citation.md
