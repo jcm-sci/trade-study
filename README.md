@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/jcm-sci/trade-study/actions/workflows/ci.yml/badge.svg)](https://github.com/jcm-sci/trade-study/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/trade-study)](https://pypi.org/project/trade-study/)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19599839.svg)](https://doi.org/10.5281/zenodo.19599839)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19599838.svg)](https://doi.org/10.5281/zenodo.19599838)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
@@ -200,6 +200,27 @@ save_results(results, "study_results")
 results = load_results("study_results")
 ```
 
+### Multi-fidelity search and surrogates
+
+```python
+from trade_study import run_successive_halving, run_hyperband, fit_surrogate, fit_regime_surrogate
+
+# Cheap-first budget-constrained screening
+results = run_successive_halving(world, scorer, factors, observables, budget_param="maxiters")
+results = run_hyperband(world, scorer, factors, observables, budget_param="maxiters")
+
+# Interpolate scores from a completed results table (GP or RF)
+surrogate = fit_surrogate(results, method="gp")
+
+# Recommend a config per regime, interpolating over regime descriptors
+regime_surrogate = fit_regime_surrogate(results, regime_cols=["n", "p"])
+```
+
+`Constraint` / `feasibility_filter` express infeasible regions of the
+design space; `FactorConstraint` couples factors during grid
+construction (e.g. keep `x + y <= 1`); `screen()` supports both Morris
+and Sobol sensitivity analysis.
+
 ## Related packages
 
 | Package | Description |
@@ -214,6 +235,23 @@ just ci          # lint → mypy --strict → pytest with coverage
 just format      # auto-format
 just check       # auto-fix lint
 ```
+
+## Citation
+
+If you use this package in your research, please cite:
+
+```bibtex
+@software{trade_study2026,
+  author = {Macdonald, Joshua C.},
+  title = {{trade-study}: Multi-Objective Trade-Study Orchestration},
+  year = {2026},
+  url = {https://github.com/jcm-sci/trade-study},
+  version = {0.2.0},
+  doi = {10.5281/zenodo.19599838},
+}
+```
+
+See [CITATION.cff](CITATION.cff) for machine-readable metadata.
 
 ## License
 

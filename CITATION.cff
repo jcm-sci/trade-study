@@ -1,0 +1,36 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "trade-study: Multi-Objective Trade-Study Orchestration"
+authors:
+  - family-names: "Macdonald"
+    given-names: "Joshua C."
+    email: "jmacdo16@jh.edu"
+    orcid: "https://orcid.org/0000-0002-3643-6266"
+    affiliation: "Johns Hopkins University"
+repository-code: "https://github.com/jcm-sci/trade-study"
+url: "https://github.com/jcm-sci/trade-study"
+abstract: >
+  Multi-objective trade-study orchestration: define factors, build parameter
+  grids, run hierarchical study phases, and extract Pareto fronts. Provides a
+  protocol-driven workflow composing experimental design (full factorial,
+  LHS, Sobol, Halton, Morris/Sobol screening), parallel and adaptive
+  execution (grid, NSGA-II, successive halving, Hyperband), Pareto analysis,
+  Bayesian and score-based stacking, and regime-conditional surrogate
+  modeling.
+keywords:
+  - trade-study
+  - model-selection
+  - scoring-rules
+  - pareto-optimization
+  - bayesian-stacking
+  - design-of-experiments
+  - sensitivity-analysis
+  - multi-objective-optimization
+license: MIT
+version: "0.2.0"
+date-released: "2026-08-17"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.19599838"
+    description: "Zenodo archive (all versions)"
