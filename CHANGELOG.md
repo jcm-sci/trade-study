@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 
 - Replicated trials: `run_grid(..., n_reps=N)` evaluates each design point N times; simulators may opt in to per-replicate randomness via an optional `rep` keyword on `Simulator.generate` (detected by introspection). `ResultsTable.aggregate_replicates()` collapses replicate rows back to per-design-point means with `n_reps`/`score_std` metadata. `Phase.n_reps` forwards this into `Study`, and phase filtering now runs against aggregated design points rather than raw replicates when `n_reps>1` (#112).
 - Surrogate accuracy reporting: `fit_surrogate()`/`SurrogateModel` (and `fit_regime_surrogate()`/`RegimeSurrogate` via passthrough) now compute a uniform k-fold cross-validated `cv_r2`/`cv_rmse` per observable for both the `gp` and `rf` backends. Warns (`warn_below_r2`, default threshold `0.0`) at fit time and in `RegimeSurrogate.recommend()` when an observable's accuracy is too low to trust (#114).
+- `sensitivity_from_table()`: post-hoc Sobol/Morris sensitivity from an already-collected `ResultsTable`, by fitting a cheap surrogate over it (`fit_surrogate`) and running `screen()`'s existing machinery against the surrogate instead of a fresh simulator. Unlike a marginal Spearman correlation, this correctly detects non-monotonic (e.g. U-shaped) factor effects. Returns a `TableSensitivity` with `importance` indices and the surrogate's `surrogate_cv_r2` (#114) so callers can judge whether to trust the result (#113).
 
 ## [0.2.0] — 2026-08-17
 
