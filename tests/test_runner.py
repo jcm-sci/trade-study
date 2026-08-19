@@ -8,7 +8,13 @@ import numpy as np
 import pytest
 
 from trade_study.design import Factor, FactorType
-from trade_study.protocols import Annotation, Direction, Observable, TrialResult
+from trade_study.protocols import (
+    Annotation,
+    Direction,
+    Observable,
+    ResultsTable,
+    TrialResult,
+)
 from trade_study.runner import (
     run_adaptive,
     run_grid,
@@ -363,6 +369,208 @@ def test_run_grid_callback_none(
     grid = [{"alpha": 0.5}]
     result = run_grid(world, scorer, grid, observables)
     assert len(result.configs) == 1
+
+
+# ---------------------------------------------------------------------------
+# Replicated trials (#112)
+# ---------------------------------------------------------------------------
+
+
+class _RepAwareSimulator:
+    """Simulator whose observations vary deterministically with ``rep``."""
+
+    def generate(
+        self, config: dict[str, Any], *, rep: int = 0
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Offset alpha by rep so replicate variation is observable.
+
+        Returns:
+            Tuple of (varied config, varied config) used as truth/observations.
+        """
+        varied = {**config, "alpha": float(config.get("alpha", 0.5)) + 0.01 * rep}
+        return varied, varied
+
+
+class _RepSensitiveScorer:
+    """Scorer that reads alpha from observations, not the original config."""
+
+    def score(
+        self,
+        truth: Any,
+        observations: Any,
+        config: dict[str, Any],
+    ) -> dict[str, float]:
+        """Score from observations so rep-driven variation is visible.
+
+        Returns:
+            Dict with ``error`` and ``cost`` scores derived from observations.
+        """
+        a = float(observations.get("alpha", 0.5))
+        return {"error": abs(a - 0.5), "cost": a * 10.0}
+
+
+@pytest.fixture
+def rep_world() -> _RepAwareSimulator:
+    """Rep-aware simulator fixture.
+
+    Returns:
+        A _RepAwareSimulator instance.
+    """
+    return _RepAwareSimulator()
+
+
+@pytest.fixture
+def rep_scorer() -> _RepSensitiveScorer:
+    """Rep-sensitive scorer fixture.
+
+    Returns:
+        A _RepSensitiveScorer instance.
+    """
+    return _RepSensitiveScorer()
+
+
+def test_run_grid_n_reps_default_matches_n_reps_one(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    grid: list[dict[str, Any]],
+    observables: list[Observable],
+) -> None:
+    """n_reps defaults to 1: row count and scores unchanged from before #112."""
+    default = run_grid(world, scorer, grid, observables)
+    explicit = run_grid(world, scorer, grid, observables, n_reps=1)
+    assert len(default.configs) == len(grid)
+    np.testing.assert_allclose(default.scores, explicit.scores)
+
+
+def test_run_grid_n_reps_rejects_non_positive(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    grid: list[dict[str, Any]],
+    observables: list[Observable],
+) -> None:
+    with pytest.raises(ValueError, match="n_reps must be positive"):
+        run_grid(world, scorer, grid, observables, n_reps=0)
+
+
+def test_run_grid_n_reps_expands_row_count(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    grid: list[dict[str, Any]],
+    observables: list[Observable],
+) -> None:
+    result = run_grid(world, scorer, grid, observables, n_reps=3)
+    assert len(result.configs) == 3 * len(grid)
+    assert result.scores.shape == (3 * len(grid), 2)
+
+
+def test_run_grid_n_reps_metadata_design_point_and_rep(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    grid: list[dict[str, Any]],
+    observables: list[Observable],
+) -> None:
+    result = run_grid(world, scorer, grid, observables, n_reps=3)
+    design_points = [m["design_point"] for m in result.metadata]
+    reps = [m["rep"] for m in result.metadata]
+    assert design_points == [dp for dp in range(len(grid)) for _ in range(3)]
+    assert reps == [r for _dp in range(len(grid)) for r in range(3)]
+
+
+def test_run_grid_n_reps_non_rep_aware_simulator_repeats_identically(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    observables: list[Observable],
+) -> None:
+    """A simulator without a rep parameter is called unchanged each replicate."""
+    grid = [{"alpha": 0.3}]
+    result = run_grid(world, scorer, grid, observables, n_reps=4)
+    np.testing.assert_allclose(result.scores[0], result.scores[1])
+    np.testing.assert_allclose(result.scores[0], result.scores[3])
+
+
+def test_run_grid_n_reps_rep_aware_simulator_varies_by_rep(
+    rep_world: _RepAwareSimulator,
+    rep_scorer: _RepSensitiveScorer,
+    observables: list[Observable],
+) -> None:
+    grid = [{"alpha": 0.3}]
+    result = run_grid(rep_world, rep_scorer, grid, observables, n_reps=3)
+    assert not np.allclose(result.scores[0], result.scores[1])
+    assert not np.allclose(result.scores[1], result.scores[2])
+
+
+def test_run_grid_n_reps_parallel_matches_serial(
+    rep_world: _RepAwareSimulator,
+    rep_scorer: _RepSensitiveScorer,
+    grid: list[dict[str, Any]],
+    observables: list[Observable],
+) -> None:
+    serial = run_grid(rep_world, rep_scorer, grid, observables, n_reps=2, n_jobs=1)
+    parallel = run_grid(rep_world, rep_scorer, grid, observables, n_reps=2, n_jobs=2)
+    np.testing.assert_allclose(serial.scores, parallel.scores)
+    serial_dp = [m["design_point"] for m in serial.metadata]
+    parallel_dp = [m["design_point"] for m in parallel.metadata]
+    assert serial_dp == parallel_dp
+
+
+def test_run_grid_n_reps_callback_total_reflects_replicates(
+    rep_world: _RepAwareSimulator,
+    rep_scorer: _RepSensitiveScorer,
+    observables: list[Observable],
+) -> None:
+    grid = [{"alpha": 0.0}, {"alpha": 1.0}]
+    calls: list[tuple[int, int]] = []
+    run_grid(
+        rep_world,
+        rep_scorer,
+        grid,
+        observables,
+        n_reps=3,
+        callback=lambda i, n, _r: calls.append((i, n)),
+    )
+    assert len(calls) == 6
+    assert all(total == 6 for _idx, total in calls)
+
+
+def test_aggregate_replicates_groups_by_design_point(
+    rep_world: _RepAwareSimulator,
+    rep_scorer: _RepSensitiveScorer,
+    grid: list[dict[str, Any]],
+    observables: list[Observable],
+) -> None:
+    raw = run_grid(rep_world, rep_scorer, grid, observables, n_reps=4)
+    agg = raw.aggregate_replicates()
+    assert len(agg.configs) == len(grid)
+    assert agg.observable_names == raw.observable_names
+    for i in range(len(grid)):
+        rows = [j for j, m in enumerate(raw.metadata) if m["design_point"] == i]
+        np.testing.assert_allclose(agg.scores[i], raw.scores[rows].mean(axis=0))
+
+
+def test_aggregate_replicates_records_n_reps_and_std(
+    rep_world: _RepAwareSimulator,
+    rep_scorer: _RepSensitiveScorer,
+    grid: list[dict[str, Any]],
+    observables: list[Observable],
+) -> None:
+    raw = run_grid(rep_world, rep_scorer, grid, observables, n_reps=4)
+    agg = raw.aggregate_replicates()
+    assert all(m["n_reps"] == 4 for m in agg.metadata)
+    assert all("score_std" in m for m in agg.metadata)
+    assert all(name in agg.metadata[0]["score_std"] for name in raw.observable_names)
+
+
+def test_aggregate_replicates_missing_design_point_raises(
+    observables: list[Observable],
+) -> None:
+    table = ResultsTable(
+        configs=[{"alpha": 0.5}],
+        scores=np.array([[0.0, 5.0]]),
+        observable_names=[o.name for o in observables],
+        metadata=[{"wall_seconds": 0.0}],
+    )
+    with pytest.raises(KeyError, match="design_point"):
+        table.aggregate_replicates()
 
 
 # ---------------------------------------------------------------------------
