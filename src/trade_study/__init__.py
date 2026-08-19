@@ -28,6 +28,7 @@ from .protocols import (
 )
 from .regime import RegimeSurrogate, fit_regime_surrogate
 from .runner import run_adaptive, run_grid, run_hyperband, run_successive_halving
+from .sensitivity import TableSensitivity, sensitivity_from_table
 from .stacking import ensemble_predict, stack_bayesian, stack_scores
 from .study import (
     Phase,
@@ -55,6 +56,7 @@ __all__ = [
     "Simulator",
     "Study",
     "SurrogateModel",
+    "TableSensitivity",
     "TrialResult",
     "__version__",
     "build_grid",
@@ -80,6 +82,7 @@ __all__ = [
     "save_results",
     "score",
     "screen",
+    "sensitivity_from_table",
     "stack_bayesian",
     "stack_scores",
     "top_k_pareto_filter",
