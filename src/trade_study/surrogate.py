@@ -322,8 +322,8 @@ def fit_surrogate(
 
 
 def _cross_val_accuracy(
-    x: NDArray[np.float64],
-    y: NDArray[np.float64],
+    x: NDArray[np.floating[Any]],
+    y: NDArray[np.floating[Any]],
     *,
     method: str,
     seed: int,
