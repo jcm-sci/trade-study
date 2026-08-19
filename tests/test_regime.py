@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -98,6 +99,68 @@ def test_fit_rejects_overlapping_names(
     dup = Factor("n", FactorType.CONTINUOUS, bounds=(0.0, 10.0))
     with pytest.raises(ValueError, match="appear in both"):
         fit_regime_surrogate(results, [regime_factor], [dup])
+
+
+# ---------------------------------------------------------------------------
+# Cross-validated accuracy passthrough (#114)
+# ---------------------------------------------------------------------------
+
+
+def test_cv_r2_rmse_passthrough(
+    regime_factor: Factor,
+    design_factor: Factor,
+) -> None:
+    results = _make_results(regime_factor, design_factor, n=64)
+    sur = fit_regime_surrogate(
+        results,
+        [regime_factor],
+        [design_factor],
+        method="rf",
+        seed=0,
+    )
+    assert sur.cv_r2 == sur.inner.cv_r2
+    assert sur.cv_rmse == sur.inner.cv_rmse
+    assert "loss" in sur.cv_r2
+    assert "loss" in sur.cv_rmse
+
+
+def test_recommend_warns_on_poor_fit(
+    regime_factor: Factor,
+    design_factor: Factor,
+) -> None:
+    results = _make_results(regime_factor, design_factor, n=16)
+    rng = np.random.default_rng(0)
+    results.scores[:, 0] = rng.standard_normal(len(results.configs))
+    sur = fit_regime_surrogate(
+        results,
+        [regime_factor],
+        [design_factor],
+        method="rf",
+        seed=0,
+        warn_below_r2=None,  # suppress the fit-time warning to isolate recommend()'s
+    )
+    with pytest.warns(UserWarning, match="cross-validated R\\^2"):
+        sur.recommend({"n": 5.0}, objective="loss")
+
+
+def test_recommend_warn_below_r2_none_disables(
+    regime_factor: Factor,
+    design_factor: Factor,
+) -> None:
+    results = _make_results(regime_factor, design_factor, n=16)
+    rng = np.random.default_rng(0)
+    results.scores[:, 0] = rng.standard_normal(len(results.configs))
+    sur = fit_regime_surrogate(
+        results,
+        [regime_factor],
+        [design_factor],
+        method="rf",
+        seed=0,
+        warn_below_r2=None,
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        sur.recommend({"n": 5.0}, objective="loss", warn_below_r2=None)
 
 
 # ---------------------------------------------------------------------------
