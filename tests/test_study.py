@@ -1155,3 +1155,119 @@ def test_phase_world_override_none_uses_study_default(
     r = study.results("default")
     assert r.scores[0, 0] == pytest.approx(0.0)
     assert r.scores[0, 1] == pytest.approx(5.0)
+
+
+# ---------------------------------------------------------------------------
+# Phase/Study n_reps (#112)
+# ---------------------------------------------------------------------------
+
+
+class _RepAwareSimulator:
+    """Simulator whose observations vary deterministically with ``rep``."""
+
+    def generate(
+        self, config: dict[str, Any], *, rep: int = 0
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Offset alpha by rep so replicate variation is observable.
+
+        Returns:
+            Tuple of (varied config, varied config) used as truth/observations.
+        """
+        varied = {**config, "alpha": float(config.get("alpha", 0.5)) + 0.01 * rep}
+        return varied, varied
+
+
+class _RepSensitiveScorer:
+    """Scorer that reads alpha from observations, not the original config."""
+
+    def score(
+        self,
+        truth: Any,
+        observations: Any,
+        config: dict[str, Any],
+    ) -> dict[str, float]:
+        """Score from observations so rep-driven variation is visible.
+
+        Returns:
+            Dict with ``error`` and ``cost`` scores derived from observations.
+        """
+        a = float(observations.get("alpha", 0.5))
+        return {"error": abs(a - 0.5), "cost": a * 10.0}
+
+
+def test_phase_n_reps_default_is_backward_compatible(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    grid: list[dict[str, Any]],
+    observables: list[Observable],
+) -> None:
+    study = Study(
+        world=world,
+        scorer=scorer,
+        observables=observables,
+        phases=[Phase(name="only", grid=grid)],
+    )
+    study.run()
+    assert len(study.results("only").configs) == len(grid)
+
+
+def test_phase_n_reps_expands_stored_results(
+    grid: list[dict[str, Any]],
+    observables: list[Observable],
+) -> None:
+    study = Study(
+        world=_RepAwareSimulator(),
+        scorer=_RepSensitiveScorer(),
+        observables=observables,
+        phases=[Phase(name="replicated", grid=grid, n_reps=4)],
+    )
+    study.run()
+    raw = study.results("replicated")
+    assert len(raw.configs) == 4 * len(grid)
+    assert all("design_point" in m and "rep" in m for m in raw.metadata)
+
+
+def test_phase_n_reps_stored_results_support_aggregate_replicates(
+    grid: list[dict[str, Any]],
+    observables: list[Observable],
+) -> None:
+    study = Study(
+        world=_RepAwareSimulator(),
+        scorer=_RepSensitiveScorer(),
+        observables=observables,
+        phases=[Phase(name="replicated", grid=grid, n_reps=4)],
+    )
+    study.run()
+    agg = study.results("replicated").aggregate_replicates()
+    assert len(agg.configs) == len(grid)
+    assert all(m["n_reps"] == 4 for m in agg.metadata)
+
+
+def test_phase_n_reps_filter_operates_on_aggregated_design_points(
+    observables: list[Observable],
+) -> None:
+    """filter_fn sees per-design-point aggregates, not raw noisy replicates."""
+    grid = [{"alpha": v} for v in [0.0, 0.25, 0.5, 0.75, 1.0]]
+    study = Study(
+        world=_RepAwareSimulator(),
+        scorer=_RepSensitiveScorer(),
+        observables=observables,
+        phases=[
+            Phase(
+                name="phase1",
+                grid=grid,
+                n_reps=4,
+                filter_fn=top_k_pareto_filter(k=2),
+            ),
+            Phase(name="phase2", grid="previous"),
+        ],
+    )
+    study.run()
+    # Raw replicate-level data is still fully retained for phase1.
+    assert len(study.results("phase1").configs) == 4 * len(grid)
+    # But exactly 2 *distinct* design points were carried forward, not up
+    # to 8 duplicate/noisy replicate rows.
+    p2 = study.results("phase2")
+    assert len(p2.configs) == 2
+    alphas = {round(c["alpha"], 2) for c in p2.configs}
+    assert len(alphas) == 2

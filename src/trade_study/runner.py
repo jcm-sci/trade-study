@@ -6,6 +6,7 @@ Adaptive mode uses optuna for multi-objective Bayesian optimization.
 
 from __future__ import annotations
 
+import inspect
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -32,24 +33,54 @@ if TYPE_CHECKING:
     ProgressCallback = Callable[[int, int, TrialResult], None]
 
 
+def _generate_accepts_rep(world: Simulator) -> bool:
+    """Whether ``world.generate`` opts into the ``rep`` convention.
+
+    See :meth:`~trade_study.protocols.Simulator.generate` for the
+    convention: a simulator that wants per-replicate stochasticity under
+    ``run_grid(..., n_reps>1)`` may accept an optional keyword-only ``rep``
+    parameter. Detected via introspection rather than a formal Protocol
+    signature change, so simulators written before replication support
+    existed keep working unmodified.
+
+    Returns:
+        True if ``world.generate``'s signature includes a ``rep`` parameter.
+    """
+    try:
+        sig = inspect.signature(world.generate)
+    except (TypeError, ValueError):
+        return False
+    return "rep" in sig.parameters
+
+
 def _run_single(
     world: Simulator,
     scorer: Scorer,
     config: dict[str, Any],
+    *,
+    rep: int,
+    supports_rep: bool,
 ) -> TrialResult:
     """Run a single trial: generate → score → return.
 
     Returns:
-        TrialResult with config, scores, and wall time.
+        TrialResult with config, scores, wall time, and ``rep`` metadata.
     """
     t0 = time.perf_counter()
-    truth, observations = world.generate(config)
+    if supports_rep:
+        # rep is an opt-in extension beyond Simulator's formal signature,
+        # detected via introspection in _generate_accepts_rep.
+        truth, observations = world.generate(config, rep=rep)  # type: ignore[call-arg]
+    else:
+        truth, observations = world.generate(config)
     scores = scorer.score(truth, observations, config)
     wall = time.perf_counter() - t0
-    return TrialResult(config=config, scores=scores, wall_seconds=wall)
+    return TrialResult(
+        config=config, scores=scores, wall_seconds=wall, metadata={"rep": rep}
+    )
 
 
-def run_grid(
+def run_grid(  # ruff: ignore[too-many-arguments]
     world: Simulator,
     scorer: Scorer,
     grid: list[dict[str, Any]],
@@ -57,6 +88,7 @@ def run_grid(
     *,
     annotations: list[Annotation] | None = None,
     n_jobs: int = 1,
+    n_reps: int = 1,
     callback: ProgressCallback | None = None,
 ) -> ResultsTable:
     """Run all configurations in a grid.
@@ -68,17 +100,43 @@ def run_grid(
         observables: Observable definitions (for column ordering).
         annotations: Optional external annotations (costs, etc.).
         n_jobs: Number of parallel workers (-1 for all CPUs).
+        n_reps: Number of times to evaluate each design point (#112).
+            When greater than 1 and ``world.generate`` accepts a ``rep``
+            keyword argument, each replicate is called with its 0-indexed
+            ``rep`` so the simulator can vary its own randomness; a
+            simulator without a ``rep`` parameter is called unchanged,
+            which reproduces its ``n_reps=1`` behavior on every replicate.
+            The returned table has ``n_reps * len(grid)`` rows; each row's
+            metadata carries ``design_point`` (index into ``grid``) and
+            ``rep`` so replicates can be grouped, e.g. via
+            :meth:`~trade_study.protocols.ResultsTable.aggregate_replicates`.
         callback: Optional progress callback invoked after each trial
-            with ``(trial_index, total_trials, trial_result)``.
+            with ``(trial_index, total_trials, trial_result)``, where
+            ``total_trials`` is ``n_reps * len(grid)``.
 
     Returns:
         ResultsTable with scored results.
+
+    Raises:
+        ValueError: If ``n_reps`` is not positive.
     """
-    total = len(grid)
+    if n_reps < 1:
+        msg = f"run_grid: n_reps must be positive, got {n_reps}"
+        raise ValueError(msg)
+
+    supports_rep = _generate_accepts_rep(world)
+    tasks = [
+        (design_point, cfg, rep)
+        for design_point, cfg in enumerate(grid)
+        for rep in range(n_reps)
+    ]
+    total = len(tasks)
+
     if n_jobs == 1:
         results: list[TrialResult] = []
-        for i, cfg in enumerate(grid):
-            r = _run_single(world, scorer, cfg)
+        for i, (design_point, cfg, rep) in enumerate(tasks):
+            r = _run_single(world, scorer, cfg, rep=rep, supports_rep=supports_rep)
+            r.metadata["design_point"] = design_point
             results.append(r)
             if callback is not None:
                 callback(i, total, r)
@@ -86,8 +144,11 @@ def run_grid(
         from joblib import Parallel, delayed  # type: ignore[import-untyped]
 
         results = Parallel(n_jobs=n_jobs)(
-            delayed(_run_single)(world, scorer, cfg) for cfg in grid
+            delayed(_run_single)(world, scorer, cfg, rep=rep, supports_rep=supports_rep)
+            for _design_point, cfg, rep in tasks
         )
+        for (design_point, _cfg, _rep), r in zip(tasks, results, strict=True):
+            r.metadata["design_point"] = design_point
         if callback is not None:
             for i, r in enumerate(results):
                 callback(i, total, r)
@@ -111,7 +172,7 @@ def run_grid(
         observable_names=obs_names,
         annotations=ann_matrix,
         annotation_names=ann_names,
-        metadata=[{"wall_seconds": r.wall_seconds} for r in results],
+        metadata=[{"wall_seconds": r.wall_seconds, **r.metadata} for r in results],
     )
 
 

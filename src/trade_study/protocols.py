@@ -109,6 +109,18 @@ class Simulator(Protocol):
         Returns:
             A tuple of (truth, observations) where truth is the known latent
             state and observations are the (possibly noisy/masked) data.
+
+        Note:
+            Implementations that want independent draws per replicate under
+            ``run_grid(..., n_reps>1)`` (#112) may additionally accept an
+            optional keyword-only ``rep: int`` parameter (e.g.
+            ``def generate(self, config, *, rep=0)``) and vary their own
+            randomness by it (a seed derived from ``rep``, a per-rep RNG,
+            etc.). :func:`~trade_study.runner.run_grid` detects this via
+            introspection and passes the current 0-indexed replicate;
+            simulators without a ``rep`` parameter are called unchanged and
+            simply produce identical replicates, matching pre-#112
+            behavior.
         """
         ...
 
@@ -262,3 +274,64 @@ class ResultsTable:
                 raise KeyError(msg)
             mask &= _OP_MAP[con.op](values, con.threshold)
         return mask
+
+    def aggregate_replicates(self) -> ResultsTable:
+        """Collapse replicate rows into one row per design point (#112).
+
+        Groups rows by their ``metadata["design_point"]`` key (set by
+        :func:`~trade_study.runner.run_grid` when called with
+        ``n_reps>1``) and averages scores within each group. Each
+        aggregated row's metadata records ``design_point``, ``n_reps``
+        (replicate count for that point), and ``score_std`` (per-observable
+        standard deviation across replicates, keyed by observable name).
+        Annotations, if present, are taken from the first replicate of each
+        group (annotations are resolved from the config, which is identical
+        across replicates of the same design point).
+
+        Returns:
+            A new ResultsTable with one row per unique design point.
+
+        Raises:
+            KeyError: If any row's metadata lacks a ``design_point`` key,
+                i.e. this table wasn't produced by ``run_grid(n_reps>1)``.
+        """
+        import numpy as np
+
+        groups: dict[int, list[int]] = {}
+        for row_idx, meta in enumerate(self.metadata):
+            if "design_point" not in meta:
+                msg = (
+                    "aggregate_replicates: row metadata is missing a "
+                    "'design_point' key; only ResultsTables produced by "
+                    "run_grid(..., n_reps>1) support this."
+                )
+                raise KeyError(msg)
+            groups.setdefault(meta["design_point"], []).append(row_idx)
+
+        order = sorted(groups)
+        configs = [self.configs[groups[dp][0]] for dp in order]
+        means = np.array([self.scores[groups[dp]].mean(axis=0) for dp in order])
+        stds = np.array([self.scores[groups[dp]].std(axis=0, ddof=0) for dp in order])
+        metadata = [
+            {
+                "design_point": dp,
+                "n_reps": len(groups[dp]),
+                "score_std": dict(zip(self.observable_names, stds[i], strict=True)),
+            }
+            for i, dp in enumerate(order)
+        ]
+
+        annotations = (
+            np.array([self.annotations[groups[dp][0]] for dp in order])
+            if self.annotations is not None
+            else None
+        )
+
+        return ResultsTable(
+            configs=configs,
+            scores=means,
+            observable_names=self.observable_names,
+            annotations=annotations,
+            annotation_names=self.annotation_names,
+            metadata=metadata,
+        )

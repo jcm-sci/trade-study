@@ -49,6 +49,10 @@ class Phase:
             indices of configs to pass to the next phase. If None, phase
             is terminal.
         n_trials: For adaptive mode, number of optuna trials.
+        n_reps: For grid modes (explicit or callable grid), number of times
+            to evaluate each design point; forwarded to
+            :func:`~trade_study.runner.run_grid` (#112). Ignored in
+            adaptive mode.
         world: Optional phase-level simulator override.  When set, this
             phase uses *world* instead of the ``Study``-level simulator.
             Useful for multi-fidelity workflows (cheap surrogate first,
@@ -63,6 +67,7 @@ class Phase:
         None
     )
     n_trials: int = 100
+    n_reps: int = 1
     world: Simulator | None = None
     scorer: Scorer | None = None
 
@@ -244,6 +249,7 @@ class Study:
                     self.observables,
                     annotations=self.annotations or None,
                     n_jobs=n_jobs,
+                    n_reps=phase.n_reps,
                     callback=callback,
                 )
             else:
@@ -257,6 +263,7 @@ class Study:
                     self.observables,
                     annotations=self.annotations or None,
                     n_jobs=n_jobs,
+                    n_reps=phase.n_reps,
                     callback=callback,
                 )
 
@@ -264,8 +271,16 @@ class Study:
             prev_result = result
 
             if phase.filter_fn is not None:
-                keep = phase.filter_fn(result, self.observables)
-                carry_grid = [result.configs[i] for i in keep]
+                # Filter on aggregated per-design-point scores when
+                # replicated (#112), so filters like top_k_pareto_filter
+                # rank design points rather than individual noisy
+                # replicates. The raw per-replicate table is still stored
+                # above via self._results for downstream inspection.
+                filter_source = (
+                    result.aggregate_replicates() if phase.n_reps > 1 else result
+                )
+                keep = phase.filter_fn(filter_source, self.observables)
+                carry_grid = [filter_source.configs[i] for i in keep]
             else:
                 carry_grid = None
 
