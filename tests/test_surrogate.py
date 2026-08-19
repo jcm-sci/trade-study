@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -95,6 +96,69 @@ def test_fit_surrogate_all_nan(continuous_factors: list[Factor]) -> None:
     results.scores[:] = np.nan
     with pytest.raises(ValueError, match="non-NaN"):
         fit_surrogate(results, continuous_factors, method="rf")
+
+
+# ---------------------------------------------------------------------------
+# Cross-validated accuracy (#114)
+# ---------------------------------------------------------------------------
+
+
+def test_cv_r2_present_for_fitted_observables(continuous_factors: list[Factor]) -> None:
+    results = _make_results(continuous_factors, n=32)
+    model = fit_surrogate(results, continuous_factors, method="rf", seed=0)
+    assert set(model.cv_r2) == {"y", "z"}
+    assert set(model.cv_rmse) == {"y", "z"}
+    assert all(np.isfinite(v) for v in model.cv_r2.values())
+    assert all(v >= 0.0 for v in model.cv_rmse.values())
+
+
+@pytest.mark.parametrize("method", ["gp", "rf"])
+def test_cv_r2_high_for_deterministic_relationship(
+    continuous_factors: list[Factor], method: str
+) -> None:
+    """The linear y relation is exactly learnable; CV R^2 should be high."""
+    results = _make_results(continuous_factors, n=64)
+    model = fit_surrogate(results, continuous_factors, method=method, seed=0)
+    assert model.cv_r2["y"] > 0.8
+
+
+def test_cv_folds_clamped_for_small_data(continuous_factors: list[Factor]) -> None:
+    """cv_folds > available rows is clamped rather than raising."""
+    results = _make_results(continuous_factors, n=3)
+    model = fit_surrogate(results, continuous_factors, method="rf", seed=0, cv_folds=10)
+    assert np.isfinite(model.cv_r2["y"])
+
+
+def test_cv_skipped_below_two_folds(continuous_factors: list[Factor]) -> None:
+    """cv_folds=1 disables CV: values are nan, and no low-accuracy warning fires."""
+    results = _make_results(continuous_factors, n=8)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model = fit_surrogate(
+            results, continuous_factors, method="rf", seed=0, cv_folds=1
+        )
+    assert all(np.isnan(v) for v in model.cv_r2.values())
+    assert all(np.isnan(v) for v in model.cv_rmse.values())
+
+
+def test_warn_below_r2_warns_on_poor_fit(continuous_factors: list[Factor]) -> None:
+    """A surrogate fit to pure noise should trigger the default R^2<0 warning."""
+    results = _make_results(continuous_factors, n=16)
+    rng = np.random.default_rng(0)
+    results.scores[:, 0] = rng.standard_normal(len(results.configs))
+    with pytest.warns(UserWarning, match="cross-validated R\\^2 below"):
+        fit_surrogate(results, continuous_factors, method="rf", seed=0)
+
+
+def test_warn_below_r2_none_disables_warning(continuous_factors: list[Factor]) -> None:
+    results = _make_results(continuous_factors, n=16)
+    rng = np.random.default_rng(0)
+    results.scores[:, 0] = rng.standard_normal(len(results.configs))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        fit_surrogate(
+            results, continuous_factors, method="rf", seed=0, warn_below_r2=None
+        )
 
 
 # ---------------------------------------------------------------------------

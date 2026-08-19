@@ -19,6 +19,7 @@ Optional dependency: install via the ``trade-study[surrogate]`` extra.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -128,12 +129,19 @@ class SurrogateModel:
         encoder: Factor encoder used at fit time.
         observable_names: Column names of the predicted observables.
         models: One fitted scikit-learn estimator per observable.
+        cv_r2: Per-observable held-out cross-validated R^2 (#114). Missing
+            for an observable if too few rows were available to run CV
+            (fewer than 2 folds); ``float("nan")`` in that case.
+        cv_rmse: Per-observable held-out cross-validated RMSE, companion
+            to ``cv_r2`` in the observable's original units.
     """
 
     method: str
     encoder: _FactorEncoder
     observable_names: list[str]
     models: list[Any]
+    cv_r2: dict[str, float] = field(default_factory=dict)
+    cv_rmse: dict[str, float] = field(default_factory=dict)
 
     def predict(self, config: dict[str, Any]) -> dict[str, float]:
         """Predict observables for a single config.
@@ -203,12 +211,22 @@ def fit_surrogate(
     method: str = "gp",
     seed: int = 0,
     n_estimators: int = 200,
+    cv_folds: int = 5,
+    warn_below_r2: float | None = 0.0,
 ) -> SurrogateModel:
     """Fit a per-observable surrogate over a :class:`ResultsTable`.
 
     Rows whose score column contains ``NaN`` are dropped on a
     per-observable basis (so a partially-evaluated trial still
     contributes to the observables it does have).
+
+    After fitting each observable's model on all its available rows,
+    also computes a held-out cross-validated R^2/RMSE (#114) so callers
+    can tell a well-fit surrogate from one that's effectively guessing
+    in a sparse or noisy region of the design space -- neither backend
+    reports this on its own (RF's cheap OOB score isn't available for
+    GP, so CV is used uniformly for both, at the cost of ``cv_folds``
+    extra fits per observable).
 
     Args:
         results: A :class:`ResultsTable` from a previous study run.
@@ -219,6 +237,14 @@ def fit_surrogate(
         seed: Random seed forwarded to the backend estimators.
         n_estimators: Number of trees for the ``"rf"`` backend; ignored
             for ``"gp"``.
+        cv_folds: Number of cross-validation folds used to compute
+            ``cv_r2``/``cv_rmse``. Clamped down to the observable's
+            available row count when fewer than ``cv_folds`` rows exist;
+            skipped (``nan``) for an observable with fewer than 2 rows.
+        warn_below_r2: If not ``None``, emit a ``UserWarning`` naming any
+            observable whose ``cv_r2`` falls below this threshold --
+            0.0 (the default) flags a surrogate that predicts no better
+            than the training mean. Pass ``None`` to disable.
 
     Returns:
         A fitted :class:`SurrogateModel`.
@@ -242,15 +268,32 @@ def fit_surrogate(
 
     models: list[Any] = []
     fitted_obs: list[str] = []
+    cv_r2: dict[str, float] = {}
+    cv_rmse: dict[str, float] = {}
+    low_accuracy: list[str] = []
     for j, name in enumerate(results.observable_names):
         y = results.scores[:, j]
         mask = ~np.isnan(y)
-        if int(mask.sum()) < 2:
+        n_rows = int(mask.sum())
+        if n_rows < 2:
             continue
         model = _make_estimator(method, seed=seed, n_estimators=n_estimators)
         model.fit(x_full[mask], y[mask])
         models.append(model)
         fitted_obs.append(name)
+
+        r2, rmse = _cross_val_accuracy(
+            x_full[mask],
+            y[mask],
+            method=method,
+            seed=seed,
+            n_estimators=n_estimators,
+            n_folds=min(cv_folds, n_rows),
+        )
+        cv_r2[name] = r2
+        cv_rmse[name] = rmse
+        if warn_below_r2 is not None and np.isfinite(r2) and r2 < warn_below_r2:
+            low_accuracy.append(name)
 
     if not models:
         msg = (
@@ -259,12 +302,58 @@ def fit_surrogate(
         )
         raise ValueError(msg)
 
+    if low_accuracy:
+        warnings.warn(
+            f"fit_surrogate: cross-validated R^2 below {warn_below_r2} for "
+            f"{low_accuracy} -- predictions for these observables may not "
+            f"be trustworthy. See SurrogateModel.cv_r2 for exact values.",
+            UserWarning,
+            stacklevel=2,
+        )
+
     return SurrogateModel(
         method=method,
         encoder=encoder,
         observable_names=fitted_obs,
         models=models,
+        cv_r2=cv_r2,
+        cv_rmse=cv_rmse,
     )
+
+
+def _cross_val_accuracy(
+    x: NDArray[np.floating[Any]],
+    y: NDArray[np.floating[Any]],
+    *,
+    method: str,
+    seed: int,
+    n_estimators: int,
+    n_folds: int,
+) -> tuple[float, float]:
+    """K-fold cross-validated R^2/RMSE for one observable.
+
+    Returns:
+        ``(r2, rmse)``, both ``float("nan")`` if fewer than 2 folds are
+        possible.
+    """
+    if n_folds < 2:
+        return float("nan"), float("nan")
+
+    from sklearn.model_selection import KFold  # type: ignore[import-untyped]
+
+    kfold = KFold(n_splits=n_folds, shuffle=True, random_state=seed)
+    y_pred = np.empty_like(y)
+    for train_idx, test_idx in kfold.split(x):
+        fold_model = _make_estimator(method, seed=seed, n_estimators=n_estimators)
+        fold_model.fit(x[train_idx], y[train_idx])
+        y_pred[test_idx] = fold_model.predict(x[test_idx])
+
+    residuals = y - y_pred
+    rmse = float(np.sqrt(np.mean(residuals**2)))
+    ss_res = float(np.sum(residuals**2))
+    ss_tot = float(np.sum((y - y.mean()) ** 2))
+    r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else float("nan")
+    return r2, rmse
 
 
 def _make_estimator(method: str, *, seed: int, n_estimators: int) -> Any:  # ruff: ignore[any-type]
