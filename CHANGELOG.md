@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Replicated trials: `run_grid(..., n_reps=N)` evaluates each design point N times; simulators may opt in to per-replicate randomness via an optional `rep` keyword on `Simulator.generate` (detected by introspection). `ResultsTable.aggregate_replicates()` collapses replicate rows back to per-design-point means with `n_reps`/`score_std` metadata. `Phase.n_reps` forwards this into `Study`, and phase filtering now runs against aggregated design points rather than raw replicates when `n_reps>1` (#112).
+- Surrogate accuracy reporting: `fit_surrogate()`/`SurrogateModel` (and `fit_regime_surrogate()`/`RegimeSurrogate` via passthrough) now compute a uniform k-fold cross-validated `cv_r2`/`cv_rmse` per observable for both the `gp` and `rf` backends. Warns (`warn_below_r2`, default threshold `0.0`) at fit time and in `RegimeSurrogate.recommend()` when an observable's accuracy is too low to trust (#114).
 
 ## [0.2.0] — 2026-08-17
 
