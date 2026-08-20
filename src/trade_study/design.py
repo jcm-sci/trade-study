@@ -5,6 +5,7 @@ Wraps pyDOE3 for grid construction and SALib for sensitivity screening.
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass, field
 from enum import Enum
 from itertools import product
@@ -417,12 +418,57 @@ def _rejection_sample(
     return accepted
 
 
+def _run_fn_accepts_rep(run_fn: Callable[..., dict[str, float]]) -> bool:
+    """Whether ``run_fn`` opts into the ``rep`` convention.
+
+    Mirrors :func:`~trade_study.runner._generate_accepts_rep`'s convention
+    for :meth:`Simulator.generate`, applied to the bare callable
+    ``screen()``/``sobol_indices()`` take instead: a ``run_fn`` that wants
+    per-replicate stochasticity under ``n_reps>1`` may accept an optional
+    keyword-only ``rep`` parameter. Detected via introspection so
+    ``run_fn``s written before replication support existed keep working
+    unmodified.
+
+    Returns:
+        True if ``run_fn``'s signature includes a ``rep`` parameter.
+    """
+    try:
+        sig = inspect.signature(run_fn)
+    except (TypeError, ValueError):
+        return False
+    return "rep" in sig.parameters
+
+
+def _evaluate_averaged(
+    run_fn: Callable[..., dict[str, float]],
+    cfg: dict[str, Any],
+    n_reps: int,
+    *,
+    supports_rep: bool,
+) -> dict[str, float]:
+    """Evaluate ``run_fn`` at ``cfg``, averaging over ``n_reps`` replicates.
+
+    Returns:
+        Mapping from observable name to its mean over ``n_reps`` calls (a
+        single call's result, unchanged, when ``n_reps == 1``).
+    """
+    if n_reps == 1:
+        return run_fn(cfg, rep=0) if supports_rep else run_fn(cfg)
+    rep_scores = [
+        run_fn(cfg, rep=rep) if supports_rep else run_fn(cfg) for rep in range(n_reps)
+    ]
+    return {
+        name: float(np.mean([s[name] for s in rep_scores])) for name in rep_scores[0]
+    }
+
+
 def screen(
     run_fn: Callable[[dict[str, Any]], dict[str, float]],
     factors: list[Factor],
     *,
     method: str = "morris",
     n_trajectories: int = 100,
+    n_reps: int = 1,
     seed: int = 42,
 ) -> dict[str, NDArray[np.floating[Any]]]:
     """Screen factors for influence on observables via SALib.
@@ -435,6 +481,14 @@ def screen(
         n_trajectories: Number of Morris trajectories.  For Sobol, this
             controls the base sample size *N*; the total number of model
             evaluations is *N* x (num_vars + 2).
+        n_reps: Replicate draws averaged into each sampled point's scores
+            before SALib sees them (#122), the same convention
+            ``run_grid(..., n_reps>1)`` uses (#112) -- ``run_fn`` opts in
+            via an optional keyword-only ``rep`` parameter, detected via
+            introspection. Without it, a single stochastic draw per point
+            can produce importance estimates that are artifacts of that
+            one draw rather than the factor's real effect. Default 1 (a
+            single draw per point, today's behavior).
         seed: Random seed.
 
     Returns:
@@ -442,12 +496,15 @@ def screen(
         (mu_star for Morris, S1 for Sobol), one value per factor.
 
     Raises:
-        ValueError: If *method* is unknown or no continuous factors are
-            provided.
+        ValueError: If *method* is unknown, no continuous factors are
+            provided, or ``n_reps`` is less than 1.
     """
     continuous = [f for f in factors if f.factor_type == FactorType.CONTINUOUS]
     if not continuous:
         msg = "Screening requires at least one continuous factor"
+        raise ValueError(msg)
+    if n_reps < 1:
+        msg = f"n_reps must be >= 1; got {n_reps}"
         raise ValueError(msg)
 
     problem: dict[str, Any] = {
@@ -457,9 +514,9 @@ def screen(
     }
 
     if method == "morris":
-        return _screen_morris(run_fn, problem, n_trajectories, seed)
+        return _screen_morris(run_fn, problem, n_trajectories, n_reps, seed)
     if method == "sobol":
-        return _screen_sobol(run_fn, problem, n_trajectories, seed)
+        return _screen_sobol(run_fn, problem, n_trajectories, n_reps, seed)
 
     msg = f"Unknown screening method: {method!r}"
     raise ValueError(msg)
@@ -469,6 +526,7 @@ def _screen_morris(
     run_fn: Callable[[dict[str, Any]], dict[str, float]],
     problem: dict[str, Any],
     n_trajectories: int,
+    n_reps: int,
     seed: int,
 ) -> dict[str, NDArray[np.floating[Any]]]:
     """Morris elementary-effects screening.
@@ -480,11 +538,12 @@ def _screen_morris(
     from SALib.sample import morris as morris_sample  # type: ignore[import-untyped]
 
     param_values = morris_sample.sample(problem, n_trajectories, seed=seed)
+    supports_rep = _run_fn_accepts_rep(run_fn)
 
     results_by_obs: dict[str, list[float]] = {}
     for row in param_values:
         cfg = dict(zip(problem["names"], row, strict=True))
-        scores = run_fn(cfg)
+        scores = _evaluate_averaged(run_fn, cfg, n_reps, supports_rep=supports_rep)
         for obs_name, val in scores.items():
             results_by_obs.setdefault(obs_name, []).append(val)
 
@@ -505,6 +564,7 @@ def _sobol_sample_and_evaluate(
     run_fn: Callable[[dict[str, Any]], dict[str, float]],
     problem: dict[str, Any],
     n_samples: int,
+    n_reps: int,
     seed: int,
 ) -> dict[str, list[float]]:
     """Draw a Saltelli design and evaluate ``run_fn`` at every point.
@@ -519,11 +579,12 @@ def _sobol_sample_and_evaluate(
     from SALib.sample import sobol as sobol_sample
 
     param_values = sobol_sample.sample(problem, n_samples, seed=seed)
+    supports_rep = _run_fn_accepts_rep(run_fn)
 
     results_by_obs: dict[str, list[float]] = {}
     for row in param_values:
         cfg = dict(zip(problem["names"], row, strict=True))
-        scores = run_fn(cfg)
+        scores = _evaluate_averaged(run_fn, cfg, n_reps, supports_rep=supports_rep)
         for obs_name, val in scores.items():
             results_by_obs.setdefault(obs_name, []).append(val)
     return results_by_obs
@@ -533,6 +594,7 @@ def _screen_sobol(
     run_fn: Callable[[dict[str, Any]], dict[str, float]],
     problem: dict[str, Any],
     n_samples: int,
+    n_reps: int,
     seed: int,
 ) -> dict[str, NDArray[np.floating[Any]]]:
     """Sobol variance-based sensitivity analysis.
@@ -542,7 +604,9 @@ def _screen_sobol(
     """
     from SALib.analyze import sobol as sobol_analyze
 
-    results_by_obs = _sobol_sample_and_evaluate(run_fn, problem, n_samples, seed)
+    results_by_obs = _sobol_sample_and_evaluate(
+        run_fn, problem, n_samples, n_reps, seed
+    )
 
     importance: dict[str, NDArray[np.floating[Any]]] = {}
     for obs_name, vals in results_by_obs.items():
@@ -561,6 +625,7 @@ def sobol_indices(
     factors: list[Factor],
     *,
     n_samples: int = 100,
+    n_reps: int = 1,
     seed: int = 42,
 ) -> dict[str, tuple[NDArray[np.floating[Any]], NDArray[np.floating[Any]]]]:
     """Sobol first- and total-order sensitivity indices (#120).
@@ -579,6 +644,10 @@ def sobol_indices(
             varied (as in ``screen()``).
         n_samples: Base sample size *N* for the Saltelli design; total
             evaluations are *N* x (2 x num_vars + 2).
+        n_reps: Replicate draws averaged into each sampled point's scores
+            before SALib sees them (#122) -- see ``screen()``'s ``n_reps``
+            for the full rationale and the ``run_fn`` opt-in convention.
+            Default 1 (a single draw per point, today's behavior).
         seed: Random seed.
 
     Returns:
@@ -587,7 +656,8 @@ def sobol_indices(
         appear in ``factors``).
 
     Raises:
-        ValueError: If no continuous factors are provided.
+        ValueError: If no continuous factors are provided, or ``n_reps``
+            is less than 1.
     """
     from SALib.analyze import sobol as sobol_analyze
 
@@ -595,13 +665,18 @@ def sobol_indices(
     if not continuous:
         msg = "Screening requires at least one continuous factor"
         raise ValueError(msg)
+    if n_reps < 1:
+        msg = f"n_reps must be >= 1; got {n_reps}"
+        raise ValueError(msg)
 
     problem: dict[str, Any] = {
         "num_vars": len(continuous),
         "names": [f.name for f in continuous],
         "bounds": [list(f.bounds) for f in continuous if f.bounds is not None],
     }
-    results_by_obs = _sobol_sample_and_evaluate(run_fn, problem, n_samples, seed)
+    results_by_obs = _sobol_sample_and_evaluate(
+        run_fn, problem, n_samples, n_reps, seed
+    )
 
     indices: dict[str, tuple[NDArray[np.floating[Any]], NDArray[np.floating[Any]]]] = {}
     for obs_name, vals in results_by_obs.items():

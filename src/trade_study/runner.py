@@ -183,6 +183,7 @@ def run_adaptive(
     observables: list[Observable],
     *,
     n_trials: int = 100,
+    n_reps: int = 1,
     seed: int = 42,
 ) -> ResultsTable:
     """Run adaptive multi-objective optimization via optuna.
@@ -193,14 +194,34 @@ def run_adaptive(
         factors: Factor definitions (from design module).
         observables: Observable definitions.
         n_trials: Number of optuna trials.
+        n_reps: Replicate draws averaged into each trial's objective
+            values before Optuna sees them (#122), the same convention
+            ``run_grid(..., n_reps>1)`` uses (#112) -- a simulator opts in
+            via an optional keyword-only ``rep`` parameter on
+            ``generate``, detected via introspection. Without it, NSGA-II
+            can select a "best" config that's just a lucky draw for one
+            data realization rather than one that's robust across draws.
+            Simulators that don't accept ``rep`` see identical draws
+            repeated ``n_reps`` times, which only adds redundant compute.
+            Default 1 (a single draw per trial, today's behavior).
         seed: Random seed.
 
     Returns:
-        ResultsTable with scored results.
+        ResultsTable with scored results, one row per optuna trial (each
+        row the mean of ``n_reps`` replicate draws).
+
+    Raises:
+        ValueError: If ``n_reps`` is less than 1.
     """
     import optuna as _optuna
 
     from .design import FactorType
+
+    if n_reps < 1:
+        msg = f"n_reps must be >= 1; got {n_reps}"
+        raise ValueError(msg)
+
+    supports_rep = _generate_accepts_rep(world)
 
     directions_str = [
         "minimize" if o.direction == Direction.MINIMIZE else "maximize"
@@ -229,10 +250,15 @@ def run_adaptive(
                 FactorType.DISCRETE,
             }:
                 config[f.name] = trial.suggest_categorical(f.name, f.levels)
-        truth, observations = world.generate(config)
-        scores = scorer.score(truth, observations, config)
+        rep_scores: list[dict[str, float]] = []
+        for rep in range(n_reps):
+            if supports_rep:
+                truth, observations = world.generate(config, rep=rep)  # type: ignore[call-arg]
+            else:
+                truth, observations = world.generate(config)
+            rep_scores.append(scorer.score(truth, observations, config))
         return tuple(
-            scores.get(name, float("nan")) * w
+            float(np.mean([s.get(name, float("nan")) for s in rep_scores])) * w
             for name, w in zip(obs_names, obs_weights, strict=True)
         )
 
