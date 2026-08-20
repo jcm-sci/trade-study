@@ -334,6 +334,71 @@ def test_run_adaptive_deterministic_seed(
 
 
 # ---------------------------------------------------------------------------
+# run_adaptive replicate averaging (#122)
+# ---------------------------------------------------------------------------
+
+
+def test_run_adaptive_rejects_non_positive_n_reps(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    observables: list[Observable],
+) -> None:
+    factors = [Factor("alpha", FactorType.CONTINUOUS, bounds=(0.0, 1.0))]
+    with pytest.raises(ValueError, match="n_reps must be >= 1"):
+        run_adaptive(world, scorer, factors, observables, n_trials=5, n_reps=0)
+
+
+def test_run_adaptive_n_reps_default_matches_n_reps_one(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    observables: list[Observable],
+) -> None:
+    """n_reps defaults to 1: scores unchanged from before #122."""
+    factors = [Factor("alpha", FactorType.CONTINUOUS, bounds=(0.0, 1.0))]
+    default = run_adaptive(world, scorer, factors, observables, n_trials=10, seed=3)
+    explicit = run_adaptive(
+        world, scorer, factors, observables, n_trials=10, n_reps=1, seed=3
+    )
+    np.testing.assert_allclose(default.scores, explicit.scores)
+
+
+def test_run_adaptive_non_rep_aware_simulator_repeats_identically(
+    world: _ToySimulator,
+    scorer: _ToyScorer,
+    observables: list[Observable],
+) -> None:
+    """A simulator without a rep parameter sees the same draw n_reps times."""
+    factors = [Factor("alpha", FactorType.CONTINUOUS, bounds=(0.0, 1.0))]
+    single = run_adaptive(world, scorer, factors, observables, n_trials=10, seed=5)
+    replicated = run_adaptive(
+        world, scorer, factors, observables, n_trials=10, n_reps=4, seed=5
+    )
+    np.testing.assert_allclose(single.scores, replicated.scores)
+
+
+def test_run_adaptive_rep_aware_simulator_averages_across_reps(
+    rep_world: _RepAwareSimulator,
+    rep_scorer: _RepSensitiveScorer,
+    observables: list[Observable],
+) -> None:
+    """A rep-aware simulator's objective is the mean over n_reps draws.
+
+    _RepAwareSimulator offsets alpha by ``0.01 * rep``; at n_reps=3 the
+    averaged cost should reflect the mean offset (0.01) rather than a
+    single draw's (0 for rep=0 alone).
+    """
+    factors = [Factor("alpha", FactorType.CONTINUOUS, bounds=(0.0, 1.0))]
+    result = run_adaptive(
+        rep_world, rep_scorer, factors, observables, n_trials=1, n_reps=3, seed=0
+    )
+    cost_idx = result.observable_names.index("cost")
+    suggested_alpha = result.configs[0]["alpha"]
+    # mean offset over rep=0,1,2 is 0.01*(0+1+2)/3.
+    expected_alpha = suggested_alpha + 0.01 * (0 + 1 + 2) / 3
+    assert result.scores[0, cost_idx] == pytest.approx(expected_alpha * 10.0)
+
+
+# ---------------------------------------------------------------------------
 # Progress callback (#77)
 # ---------------------------------------------------------------------------
 

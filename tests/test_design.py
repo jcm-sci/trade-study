@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 from typing import Any
 
 import numpy as np
@@ -16,6 +17,8 @@ from trade_study.design import (
     screen,
     sobol_indices,
 )
+
+_design = importlib.import_module("trade_study.design")
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -332,6 +335,91 @@ def test_screen_rejects_no_continuous() -> None:
     factors = [Factor("m", FactorType.CATEGORICAL, levels=["a", "b"])]
     with pytest.raises(ValueError, match="at least one continuous"):
         screen(lambda _c: {"y": 0.0}, factors)
+
+
+# ---------------------------------------------------------------------------
+# screen/sobol_indices — replicate averaging (#122)
+# ---------------------------------------------------------------------------
+
+
+def test_run_fn_accepts_rep_detects_rep_param() -> None:
+    def with_rep(_c: dict[str, Any], *, rep: int = 0) -> dict[str, float]:
+        return {"y": float(rep)}
+
+    def without_rep(_c: dict[str, Any]) -> dict[str, float]:
+        return {"y": 0.0}
+
+    assert _design._run_fn_accepts_rep(with_rep) is True  # ruff: ignore[private-member-access]
+    assert _design._run_fn_accepts_rep(without_rep) is False  # ruff: ignore[private-member-access]
+
+
+def test_evaluate_averaged_single_call_when_n_reps_one() -> None:
+    calls: list[int] = []
+
+    def run_fn(_c: dict[str, Any]) -> dict[str, float]:
+        calls.append(1)
+        return {"y": 5.0}
+
+    result = _design._evaluate_averaged(run_fn, {}, 1, supports_rep=False)  # ruff: ignore[private-member-access]
+    assert result == {"y": 5.0}
+    assert len(calls) == 1
+
+
+def test_evaluate_averaged_averages_across_reps() -> None:
+    def run_fn(_c: dict[str, Any], *, rep: int = 0) -> dict[str, float]:
+        return {"y": float(rep)}
+
+    # average of reps 0..3 is 1.5
+    result = _design._evaluate_averaged(run_fn, {}, 4, supports_rep=True)  # ruff: ignore[private-member-access]
+    assert result == pytest.approx({"y": 1.5})
+
+
+def test_evaluate_averaged_repeats_identical_draw_when_run_fn_ignores_rep() -> None:
+    calls: list[int] = []
+
+    def run_fn(_c: dict[str, Any]) -> dict[str, float]:
+        calls.append(1)
+        return {"y": 7.0}
+
+    result = _design._evaluate_averaged(run_fn, {}, 3, supports_rep=False)  # ruff: ignore[private-member-access]
+    assert result == pytest.approx({"y": 7.0})
+    assert len(calls) == 3
+
+
+def test_screen_rejects_invalid_n_reps(continuous_factors: list[Factor]) -> None:
+    with pytest.raises(ValueError, match="n_reps must be >= 1"):
+        screen(_linear_model, continuous_factors, n_trajectories=5, n_reps=0)
+
+
+def test_screen_n_reps_passes_incrementing_rep_to_run_fn(
+    continuous_factors: list[Factor],
+) -> None:
+    seen_reps: set[int] = set()
+
+    def run_fn(cfg: dict[str, Any], *, rep: int = 0) -> dict[str, float]:
+        seen_reps.add(rep)
+        return {"y": cfg["alpha"]}
+
+    screen(run_fn, continuous_factors, n_trajectories=5, n_reps=3, seed=0)
+    assert seen_reps == {0, 1, 2}
+
+
+def test_sobol_indices_rejects_invalid_n_reps(continuous_factors: list[Factor]) -> None:
+    with pytest.raises(ValueError, match="n_reps must be >= 1"):
+        sobol_indices(_linear_model, continuous_factors, n_samples=8, n_reps=0)
+
+
+def test_sobol_indices_n_reps_passes_incrementing_rep_to_run_fn(
+    continuous_factors: list[Factor],
+) -> None:
+    seen_reps: set[int] = set()
+
+    def run_fn(cfg: dict[str, Any], *, rep: int = 0) -> dict[str, float]:
+        seen_reps.add(rep)
+        return {"y": cfg["alpha"]}
+
+    sobol_indices(run_fn, continuous_factors, n_samples=8, n_reps=3, seed=0)
+    assert seen_reps == {0, 1, 2}
 
 
 # ---------------------------------------------------------------------------
