@@ -13,6 +13,7 @@ from .design import (
     build_grid,
     reduce_factors,
     screen,
+    sobol_indices,
 )
 from .io import load_results, save_results
 from .protocols import (
@@ -83,6 +84,7 @@ __all__ = [
     "score",
     "screen",
     "sensitivity_from_table",
+    "sobol_indices",
     "stack_bayesian",
     "stack_scores",
     "top_k_pareto_filter",
