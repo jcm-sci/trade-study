@@ -14,6 +14,7 @@ from trade_study.design import (
     build_grid,
     reduce_factors,
     screen,
+    sobol_indices,
 )
 
 # ---------------------------------------------------------------------------
@@ -395,6 +396,72 @@ def test_screen_sobol_multiple_observables(
     assert set(result.keys()) == {"obs1", "obs2"}
     assert result["obs1"].shape == (2,)
     assert result["obs2"].shape == (2,)
+
+
+# ---------------------------------------------------------------------------
+# sobol_indices (#120)
+# ---------------------------------------------------------------------------
+
+
+def test_sobol_indices_returns_tuple_per_observable(
+    continuous_factors: list[Factor],
+) -> None:
+    result = sobol_indices(_linear_model, continuous_factors, n_samples=64, seed=0)
+    assert isinstance(result, dict)
+    assert "y" in result
+    s1, st = result["y"]
+    assert s1.shape == (2,)
+    assert st.shape == (2,)
+
+
+def test_sobol_indices_matches_screen_s1(continuous_factors: list[Factor]) -> None:
+    """S1 from sobol_indices should match screen(method="sobol")'s S1."""
+    screened = screen(
+        _linear_model, continuous_factors, method="sobol", n_trajectories=64, seed=0
+    )
+    result = sobol_indices(_linear_model, continuous_factors, n_samples=64, seed=0)
+    s1, _st = result["y"]
+    np.testing.assert_allclose(s1, screened["y"])
+
+
+def test_sobol_indices_total_order_at_least_first_order(
+    continuous_factors: list[Factor],
+) -> None:
+    """ST >= S1 holds (up to MC estimation noise) for a variance decomposition."""
+    result = sobol_indices(_linear_model, continuous_factors, n_samples=512, seed=0)
+    s1, st = result["y"]
+    # SALib's S1/ST are independently-estimated MC quantities, not computed
+    # from a shared exact decomposition, so a generous tolerance is needed
+    # even at a reasonable sample size -- this only guards against a
+    # systematic ST-vs-S1 mixup (e.g. an accidental swap), not tight
+    # numerical agreement.
+    assert np.all(st >= s1 - 0.05)
+
+
+def test_sobol_indices_detects_pure_interaction(
+    continuous_factors: list[Factor],
+) -> None:
+    """A pure product of two zero-mean factors has ~zero S1 but nonzero ST."""
+
+    def interaction_model(cfg: dict[str, Any]) -> dict[str, float]:
+        # Both factors centered to zero mean: a pure product term then has
+        # zero first-order effect for *both* factors (E[Y|A] = A*E[B] = 0
+        # and vice versa), so any measured S1 is interaction leaking in,
+        # while ST captures the interaction directly.
+        alpha_centered = (cfg["alpha"] - 0.5) / 0.5  # [0, 1] -> [-1, 1]
+        beta_centered = (cfg["beta"] - 15.0) / 5.0  # [10, 20] -> [-1, 1]
+        return {"y": alpha_centered * beta_centered}
+
+    result = sobol_indices(interaction_model, continuous_factors, n_samples=256, seed=0)
+    s1, st = result["y"]
+    assert np.all(s1 < 0.1)
+    assert np.all(st > 0.1)
+
+
+def test_sobol_indices_rejects_no_continuous() -> None:
+    factors = [Factor("m", FactorType.CATEGORICAL, levels=["a", "b"])]
+    with pytest.raises(ValueError, match="at least one continuous"):
+        sobol_indices(lambda _c: {"y": 0.0}, factors)
 
 
 # ---------------------------------------------------------------------------

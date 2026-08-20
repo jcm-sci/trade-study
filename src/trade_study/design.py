@@ -501,6 +501,34 @@ def _screen_morris(
     return importance
 
 
+def _sobol_sample_and_evaluate(
+    run_fn: Callable[[dict[str, Any]], dict[str, float]],
+    problem: dict[str, Any],
+    n_samples: int,
+    seed: int,
+) -> dict[str, list[float]]:
+    """Draw a Saltelli design and evaluate ``run_fn`` at every point.
+
+    Shared by ``_screen_sobol`` (S1 only) and :func:`sobol_indices` (S1 and
+    ST) so both draw from -- and evaluate -- the exact same design.
+
+    Returns:
+        Mapping from observable name to its list of scores, one per
+        sampled design point, in sample order.
+    """
+    from SALib.sample import sobol as sobol_sample
+
+    param_values = sobol_sample.sample(problem, n_samples, seed=seed)
+
+    results_by_obs: dict[str, list[float]] = {}
+    for row in param_values:
+        cfg = dict(zip(problem["names"], row, strict=True))
+        scores = run_fn(cfg)
+        for obs_name, val in scores.items():
+            results_by_obs.setdefault(obs_name, []).append(val)
+    return results_by_obs
+
+
 def _screen_sobol(
     run_fn: Callable[[dict[str, Any]], dict[str, float]],
     problem: dict[str, Any],
@@ -513,16 +541,8 @@ def _screen_sobol(
         Mapping from observable name to S1 (first-order) index array.
     """
     from SALib.analyze import sobol as sobol_analyze
-    from SALib.sample import sobol as sobol_sample
 
-    param_values = sobol_sample.sample(problem, n_samples, seed=seed)
-
-    results_by_obs: dict[str, list[float]] = {}
-    for row in param_values:
-        cfg = dict(zip(problem["names"], row, strict=True))
-        scores = run_fn(cfg)
-        for obs_name, val in scores.items():
-            results_by_obs.setdefault(obs_name, []).append(val)
+    results_by_obs = _sobol_sample_and_evaluate(run_fn, problem, n_samples, seed)
 
     importance: dict[str, NDArray[np.floating[Any]]] = {}
     for obs_name, vals in results_by_obs.items():
@@ -534,6 +554,63 @@ def _screen_sobol(
         importance[obs_name] = np.asarray(si["S1"], dtype=np.float64)
 
     return importance
+
+
+def sobol_indices(
+    run_fn: Callable[[dict[str, Any]], dict[str, float]],
+    factors: list[Factor],
+    *,
+    n_samples: int = 100,
+    seed: int = 42,
+) -> dict[str, tuple[NDArray[np.floating[Any]], NDArray[np.floating[Any]]]]:
+    """Sobol first- and total-order sensitivity indices (#120).
+
+    Like ``screen(method="sobol")``, but returns both S1 (first-order) and
+    ST (total-order) per observable instead of discarding ST. ``ST - S1``
+    is the standard way to detect interaction effects: a factor with small
+    S1 but large ST is interacting with other factors rather than acting
+    independently -- information ``screen()`` can't surface at all, since
+    it only keeps S1.
+
+    Args:
+        run_fn: Callable that takes a config dict and returns a dict of
+            observable name -> scalar score.
+        factors: Factor list to analyze; only continuous factors are
+            varied (as in ``screen()``).
+        n_samples: Base sample size *N* for the Saltelli design; total
+            evaluations are *N* x (2 x num_vars + 2).
+        seed: Random seed.
+
+    Returns:
+        Dictionary mapping observable name to an ``(S1, ST)`` tuple, each
+        an array of one value per continuous factor (in the order they
+        appear in ``factors``).
+
+    Raises:
+        ValueError: If no continuous factors are provided.
+    """
+    from SALib.analyze import sobol as sobol_analyze
+
+    continuous = [f for f in factors if f.factor_type == FactorType.CONTINUOUS]
+    if not continuous:
+        msg = "Screening requires at least one continuous factor"
+        raise ValueError(msg)
+
+    problem: dict[str, Any] = {
+        "num_vars": len(continuous),
+        "names": [f.name for f in continuous],
+        "bounds": [list(f.bounds) for f in continuous if f.bounds is not None],
+    }
+    results_by_obs = _sobol_sample_and_evaluate(run_fn, problem, n_samples, seed)
+
+    indices: dict[str, tuple[NDArray[np.floating[Any]], NDArray[np.floating[Any]]]] = {}
+    for obs_name, vals in results_by_obs.items():
+        si = sobol_analyze.analyze(problem, np.array(vals), seed=seed)
+        s1 = np.asarray(si["S1"], dtype=np.float64)
+        st = np.asarray(si["ST"], dtype=np.float64)
+        indices[obs_name] = (s1, st)
+
+    return indices
 
 
 def reduce_factors(
