@@ -29,20 +29,23 @@ Optional dependency: install via the ``trade-study[surrogate]`` extra.
 from __future__ import annotations
 
 import warnings
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from .design import Factor, build_grid
+from .design import Factor, FactorType, build_grid
+from .protocols import Direction
+from .runner import run_adaptive
 from .surrogate import SurrogateModel, fit_surrogate
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
     from numpy.typing import NDArray
 
-    from .protocols import ResultsTable
+    from .protocols import Observable, ResultsTable, Scorer, Simulator
 
 
 _SUPPORTED_MODES: frozenset[str] = frozenset({"min", "max"})
@@ -305,3 +308,116 @@ def fit_regime_surrogate(  # ruff: ignore[too-many-arguments]
         regime_factors=list(regime_factors),
         factors=list(factors),
     )
+
+
+def _aggregate_factor_values(factor: Factor, values: list[Any]) -> Any:  # ruff: ignore[any-type]
+    """Aggregate one factor's per-regime best values into a bucket value.
+
+    Continuous/discrete (numeric) factors are aggregated by median;
+    categorical factors by mode (most common value, ties broken by
+    first occurrence).
+
+    Returns:
+        The aggregated value for this factor.
+    """
+    if factor.factor_type == FactorType.CATEGORICAL:
+        return Counter(values).most_common(1)[0][0]
+    return type(values[0])(np.median(values))
+
+
+def recommend_bucketed_config(  # ruff: ignore[too-many-arguments]
+    regimes: dict[str, dict[str, Any]],
+    bucket_fn: Callable[[str, dict[str, Any]], str],
+    world_factory: Callable[[dict[str, Any]], Simulator],
+    scorer: Scorer,
+    factors: list[Factor],
+    observables: list[Observable],
+    *,
+    primary: str,
+    n_trials: int = 30,
+    n_reps: int = 1,
+    seed: int = 42,
+) -> dict[str, dict[str, Any]]:
+    """Recommend a config per named bucket via per-regime adaptive search (#123).
+
+    The discrete counterpart to :func:`fit_regime_surrogate`: for a
+    handful of named regimes too sparse (and too far outside any
+    existing training data) for a surrogate to extrapolate across
+    sensibly, this instead runs :func:`~trade_study.run_adaptive` (NSGA-II)
+    independently per regime, picks each regime's best-found config by
+    ``primary``, groups regimes into named buckets via ``bucket_fn``, and
+    aggregates each bucket's per-regime best configs (median for
+    continuous/discrete factors, mode for categorical) into one
+    recommended config per bucket.
+
+    Args:
+        regimes: Mapping from regime name to a regime descriptor dict
+            (whatever ``world_factory`` needs to fix that regime).
+        bucket_fn: Maps ``(regime_name, regime_dict)`` to a bucket name;
+            regimes sharing a bucket name have their best configs
+            aggregated together.
+        world_factory: Builds a regime-scoped :class:`Simulator` from a
+            regime dict, e.g. ``lambda r: MySimulator(regime_defaults=r)``.
+        scorer: Scorer for observables (shared across all regimes).
+        factors: Tunable factors searched by ``run_adaptive`` at each
+            regime (the regime itself is fixed via ``world_factory``, not
+            part of this search space).
+        observables: Observable definitions passed to ``run_adaptive``.
+        primary: Name of the observable used to pick each regime's single
+            best trial (the one minimizing/maximizing it, per that
+            observable's ``direction``) from ``run_adaptive``'s Pareto set.
+        n_trials: Optuna trials per regime.
+        n_reps: Replicate draws averaged per trial (#122) -- see
+            :func:`~trade_study.run_adaptive`'s ``n_reps`` for the full
+            rationale. Default 1 (a single draw per trial).
+        seed: Random seed forwarded to each regime's ``run_adaptive`` call.
+
+    Returns:
+        Mapping from bucket name to its aggregated recommended config.
+
+    Raises:
+        ValueError: If ``regimes`` is empty, or ``primary`` doesn't match
+            any name in ``observables``.
+    """
+    if not regimes:
+        msg = "recommend_bucketed_config: regimes must be non-empty"
+        raise ValueError(msg)
+    matching = [o for o in observables if o.name == primary]
+    if not matching:
+        msg = f"primary={primary!r} not found in observables"
+        raise ValueError(msg)
+    minimize = matching[0].direction == Direction.MINIMIZE
+
+    per_regime_best: dict[str, dict[str, Any]] = {}
+    bucket_members: dict[str, list[str]] = defaultdict(list)
+    for name, regime in regimes.items():
+        world = world_factory(regime)
+        table = run_adaptive(
+            world,
+            scorer,
+            factors,
+            observables,
+            n_trials=n_trials,
+            n_reps=n_reps,
+            seed=seed,
+        )
+        primary_col = table.observable_names.index(primary)
+        best_i = (
+            int(np.argmin(table.scores[:, primary_col]))
+            if minimize
+            else int(np.argmax(table.scores[:, primary_col]))
+        )
+        per_regime_best[name] = table.configs[best_i]
+        bucket_members[bucket_fn(name, regime)].append(name)
+
+    factors_by_name = {f.name: f for f in factors}
+    return {
+        bucket: {
+            key: _aggregate_factor_values(
+                factors_by_name[key],
+                [per_regime_best[member][key] for member in members],
+            )
+            for key in factors_by_name
+        }
+        for bucket, members in bucket_members.items()
+    }
