@@ -16,6 +16,7 @@ from trade_study import (
     RegimeSurrogate,
     build_grid,
     fit_regime_surrogate,
+    recommend_bucketed_config,
     run_grid,
 )
 
@@ -327,3 +328,196 @@ def test_recommend_rejects_empty_candidates(
     )
     with pytest.raises(ValueError, match="no candidates"):
         sur.recommend({"n": 5.0}, objective="loss", candidates=[])
+
+
+# ---------------------------------------------------------------------------
+# recommend_bucketed_config (#123)
+# ---------------------------------------------------------------------------
+
+
+class _TargetWorld:
+    """Simulator fixed to one regime's target alpha via regime_defaults."""
+
+    def __init__(self, *, target: float, method: str) -> None:
+        self._target = target
+        self._method = method
+
+    def generate(
+        self, config: dict[str, object]
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        merged = {**config, "target": self._target, "true_method": self._method}
+        return merged, merged
+
+
+class _TargetScorer:
+    """cost = (alpha - target)**2; bonus reward when method matches target's."""
+
+    def score(
+        self,
+        truth: object,
+        observations: dict[str, object],
+        config: dict[str, object],
+    ) -> dict[str, float]:
+        del truth, config
+        alpha = float(observations["alpha"])
+        target = float(observations["target"])
+        method_ok = observations["method"] == observations["true_method"]
+        return {
+            "cost": (alpha - target) ** 2,
+            "reward": 1.0 if method_ok else 0.0,
+        }
+
+
+@pytest.fixture
+def bucketed_factors() -> list[Factor]:
+    """One continuous and one categorical tunable factor.
+
+    Returns:
+        List with ``alpha`` (continuous) and ``method`` (categorical).
+    """
+    return [
+        Factor("alpha", FactorType.CONTINUOUS, bounds=(0.0, 1.0)),
+        Factor("method", FactorType.CATEGORICAL, levels=["a", "b"]),
+    ]
+
+
+@pytest.fixture
+def bucketed_observables() -> list[Observable]:
+    """Cost (minimize) and reward (maximize) observables.
+
+    Returns:
+        List of two Observable instances.
+    """
+    return [
+        Observable("cost", Direction.MINIMIZE),
+        Observable("reward", Direction.MAXIMIZE),
+    ]
+
+
+def test_recommend_bucketed_config_aggregates_median(
+    bucketed_factors: list[Factor],
+    bucketed_observables: list[Observable],
+) -> None:
+    regimes = {
+        "r1": {"target": 0.2, "method": "a"},
+        "r2": {"target": 0.8, "method": "a"},
+    }
+    result = recommend_bucketed_config(
+        regimes,
+        bucket_fn=lambda _name, _r: "only",
+        world_factory=lambda r: _TargetWorld(target=r["target"], method=r["method"]),
+        scorer=_TargetScorer(),
+        factors=bucketed_factors,
+        observables=bucketed_observables,
+        primary="cost",
+        n_trials=40,
+        seed=0,
+    )
+    assert set(result.keys()) == {"only"}
+    # each regime's best alpha should land near its own target; median of
+    # two well-optimized targets (0.2, 0.8) should land near their midpoint.
+    assert result["only"]["alpha"] == pytest.approx(0.5, abs=0.2)
+
+
+def test_recommend_bucketed_config_separate_buckets_stay_separate(
+    bucketed_factors: list[Factor],
+    bucketed_observables: list[Observable],
+) -> None:
+    regimes = {
+        "r1": {"target": 0.1, "method": "a"},
+        "r2": {"target": 0.9, "method": "a"},
+    }
+    result = recommend_bucketed_config(
+        regimes,
+        bucket_fn=lambda name, _r: name,  # each regime is its own bucket
+        world_factory=lambda r: _TargetWorld(target=r["target"], method=r["method"]),
+        scorer=_TargetScorer(),
+        factors=bucketed_factors,
+        observables=bucketed_observables,
+        primary="cost",
+        n_trials=40,
+        seed=0,
+    )
+    assert set(result.keys()) == {"r1", "r2"}
+    assert result["r1"]["alpha"] == pytest.approx(0.1, abs=0.2)
+    assert result["r2"]["alpha"] == pytest.approx(0.9, abs=0.2)
+
+
+def test_recommend_bucketed_config_categorical_uses_mode(
+    bucketed_factors: list[Factor],
+    bucketed_observables: list[Observable],
+) -> None:
+    regimes = {
+        "r1": {"target": 0.5, "method": "a"},
+        "r2": {"target": 0.5, "method": "a"},
+        "r3": {"target": 0.5, "method": "b"},
+    }
+    result = recommend_bucketed_config(
+        regimes,
+        bucket_fn=lambda _name, _r: "only",
+        world_factory=lambda r: _TargetWorld(target=r["target"], method=r["method"]),
+        scorer=_TargetScorer(),
+        factors=bucketed_factors,
+        observables=bucketed_observables,
+        primary="reward",
+        n_trials=30,
+        seed=0,
+    )
+    # two of three regimes reward method="a"; mode should pick it.
+    assert result["only"]["method"] == "a"
+
+
+def test_recommend_bucketed_config_respects_maximize_direction(
+    bucketed_factors: list[Factor],
+    bucketed_observables: list[Observable],
+) -> None:
+    regimes = {"r1": {"target": 0.5, "method": "a"}}
+    result = recommend_bucketed_config(
+        regimes,
+        bucket_fn=lambda _name, _r: "only",
+        world_factory=lambda r: _TargetWorld(target=r["target"], method=r["method"]),
+        scorer=_TargetScorer(),
+        factors=bucketed_factors,
+        observables=bucketed_observables,
+        primary="reward",
+        n_trials=20,
+        seed=0,
+    )
+    assert result["only"]["method"] == "a"
+
+
+def test_recommend_bucketed_config_rejects_empty_regimes(
+    bucketed_factors: list[Factor],
+    bucketed_observables: list[Observable],
+) -> None:
+    with pytest.raises(ValueError, match="regimes must be non-empty"):
+        recommend_bucketed_config(
+            {},
+            bucket_fn=lambda _n, _r: "b",
+            world_factory=lambda r: _TargetWorld(
+                target=r["target"], method=r["method"]
+            ),
+            scorer=_TargetScorer(),
+            factors=bucketed_factors,
+            observables=bucketed_observables,
+            primary="cost",
+        )
+
+
+def test_recommend_bucketed_config_rejects_unknown_primary(
+    bucketed_factors: list[Factor],
+    bucketed_observables: list[Observable],
+) -> None:
+    regimes = {"r1": {"target": 0.5, "method": "a"}}
+    with pytest.raises(ValueError, match="not found in observables"):
+        recommend_bucketed_config(
+            regimes,
+            bucket_fn=lambda _n, _r: "b",
+            world_factory=lambda r: _TargetWorld(
+                target=r["target"], method=r["method"]
+            ),
+            scorer=_TargetScorer(),
+            factors=bucketed_factors,
+            observables=bucketed_observables,
+            primary="bogus",
+        )
