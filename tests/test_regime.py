@@ -14,9 +14,11 @@ from trade_study import (
     FactorType,
     Observable,
     RegimeSurrogate,
+    aggregate_bucketed_config,
     build_grid,
     fit_regime_surrogate,
     recommend_bucketed_config,
+    recommend_per_regime,
     run_grid,
 )
 
@@ -521,3 +523,71 @@ def test_recommend_bucketed_config_rejects_unknown_primary(
             observables=bucketed_observables,
             primary="bogus",
         )
+
+
+# ---------------------------------------------------------------------------
+# recommend_per_regime / aggregate_bucketed_config split (#123 follow-up)
+# ---------------------------------------------------------------------------
+
+
+def test_split_functions_match_combined_wrapper(
+    bucketed_factors: list[Factor],
+    bucketed_observables: list[Observable],
+) -> None:
+    regimes = {
+        "r1": {"target": 0.2, "method": "a"},
+        "r2": {"target": 0.8, "method": "a"},
+    }
+    kwargs = {
+        "world_factory": lambda r: _TargetWorld(target=r["target"], method=r["method"]),
+        "scorer": _TargetScorer(),
+        "factors": bucketed_factors,
+        "observables": bucketed_observables,
+        "primary": "cost",
+        "n_trials": 30,
+        "seed": 0,
+    }
+    combined = recommend_bucketed_config(
+        regimes, bucket_fn=lambda _n, _r: "only", **kwargs
+    )
+    per_regime = recommend_per_regime(regimes, **kwargs)
+    split = aggregate_bucketed_config(
+        per_regime, regimes, bucket_fn=lambda _n, _r: "only", factors=bucketed_factors
+    )
+    assert combined == split
+
+
+def test_aggregate_bucketed_config_reuses_search_for_different_groupings(
+    bucketed_factors: list[Factor],
+    bucketed_observables: list[Observable],
+) -> None:
+    """Re-bucketing with a different bucket_fn needs no new search calls."""
+    regimes = {
+        "r1": {"target": 0.1, "method": "a"},
+        "r2": {"target": 0.5, "method": "a"},
+        "r3": {"target": 0.9, "method": "a"},
+    }
+    per_regime = recommend_per_regime(
+        regimes,
+        world_factory=lambda r: _TargetWorld(target=r["target"], method=r["method"]),
+        scorer=_TargetScorer(),
+        factors=bucketed_factors,
+        observables=bucketed_observables,
+        primary="cost",
+        n_trials=30,
+        seed=0,
+    )
+    assert set(per_regime) == {"r1", "r2", "r3"}
+
+    one_bucket = aggregate_bucketed_config(
+        per_regime, regimes, bucket_fn=lambda _n, _r: "only", factors=bucketed_factors
+    )
+    assert set(one_bucket) == {"only"}
+
+    per_regime_buckets = aggregate_bucketed_config(
+        per_regime, regimes, bucket_fn=lambda name, _r: name, factors=bucketed_factors
+    )
+    assert set(per_regime_buckets) == {"r1", "r2", "r3"}
+    # each regime's own bucket should just be its own best config verbatim.
+    for name in regimes:
+        assert per_regime_buckets[name] == per_regime[name]

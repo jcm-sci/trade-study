@@ -27,7 +27,13 @@ from .protocols import (
     Simulator,
     TrialResult,
 )
-from .regime import RegimeSurrogate, fit_regime_surrogate, recommend_bucketed_config
+from .regime import (
+    RegimeSurrogate,
+    aggregate_bucketed_config,
+    fit_regime_surrogate,
+    recommend_bucketed_config,
+    recommend_per_regime,
+)
 from .runner import run_adaptive, run_grid, run_hyperband, run_successive_halving
 from .sensitivity import TableSensitivity, sensitivity_from_table
 from .stacking import ensemble_predict, stack_bayesian, stack_scores
@@ -60,6 +66,7 @@ __all__ = [
     "TableSensitivity",
     "TrialResult",
     "__version__",
+    "aggregate_bucketed_config",
     "build_grid",
     "coverage_curve",
     "ensemble_predict",
@@ -76,6 +83,7 @@ __all__ = [
     "plot_parallel",
     "plot_scores",
     "recommend_bucketed_config",
+    "recommend_per_regime",
     "reduce_factors",
     "run_adaptive",
     "run_grid",
