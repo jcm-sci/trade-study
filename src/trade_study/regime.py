@@ -325,6 +325,130 @@ def _aggregate_factor_values(factor: Factor, values: list[Any]) -> Any:  # ruff:
     return type(values[0])(np.median(values))
 
 
+def recommend_per_regime(  # ruff: ignore[too-many-arguments]
+    regimes: dict[str, dict[str, Any]],
+    world_factory: Callable[[dict[str, Any]], Simulator],
+    scorer: Scorer,
+    factors: list[Factor],
+    observables: list[Observable],
+    *,
+    primary: str,
+    n_trials: int = 30,
+    n_reps: int = 1,
+    seed: int = 42,
+) -> dict[str, dict[str, Any]]:
+    """Find each regime's best config via independent adaptive search (#123).
+
+    Runs :func:`~trade_study.run_adaptive` (NSGA-II) independently per
+    regime and picks each regime's best-found config by ``primary``. This
+    is the expensive half of :func:`recommend_bucketed_config` (the other
+    half, :func:`aggregate_bucketed_config`, is pure post-processing) --
+    split out so a caller can experiment with different bucket groupings
+    (different ``bucket_fn``s) against the same search results without
+    re-running it.
+
+    Args:
+        regimes: Mapping from regime name to a regime descriptor dict
+            (whatever ``world_factory`` needs to fix that regime).
+        world_factory: Builds a regime-scoped :class:`Simulator` from a
+            regime dict, e.g. ``lambda r: MySimulator(regime_defaults=r)``.
+        scorer: Scorer for observables (shared across all regimes).
+        factors: Tunable factors searched by ``run_adaptive`` at each
+            regime (the regime itself is fixed via ``world_factory``, not
+            part of this search space).
+        observables: Observable definitions passed to ``run_adaptive``.
+        primary: Name of the observable used to pick each regime's single
+            best trial (the one minimizing/maximizing it, per that
+            observable's ``direction``) from ``run_adaptive``'s Pareto set.
+        n_trials: Optuna trials per regime.
+        n_reps: Replicate draws averaged per trial (#122) -- see
+            :func:`~trade_study.run_adaptive`'s ``n_reps`` for the full
+            rationale. Default 1 (a single draw per trial).
+        seed: Random seed forwarded to each regime's ``run_adaptive`` call.
+
+    Returns:
+        Mapping from regime name to its best-found config.
+
+    Raises:
+        ValueError: If ``regimes`` is empty, or ``primary`` doesn't match
+            any name in ``observables``.
+    """
+    if not regimes:
+        msg = "recommend_per_regime: regimes must be non-empty"
+        raise ValueError(msg)
+    matching = [o for o in observables if o.name == primary]
+    if not matching:
+        msg = f"primary={primary!r} not found in observables"
+        raise ValueError(msg)
+    minimize = matching[0].direction == Direction.MINIMIZE
+
+    per_regime_best: dict[str, dict[str, Any]] = {}
+    for name, regime in regimes.items():
+        world = world_factory(regime)
+        table = run_adaptive(
+            world,
+            scorer,
+            factors,
+            observables,
+            n_trials=n_trials,
+            n_reps=n_reps,
+            seed=seed,
+        )
+        primary_col = table.observable_names.index(primary)
+        best_i = (
+            int(np.argmin(table.scores[:, primary_col]))
+            if minimize
+            else int(np.argmax(table.scores[:, primary_col]))
+        )
+        per_regime_best[name] = table.configs[best_i]
+    return per_regime_best
+
+
+def aggregate_bucketed_config(
+    per_regime_best: dict[str, dict[str, Any]],
+    regimes: dict[str, dict[str, Any]],
+    bucket_fn: Callable[[str, dict[str, Any]], str],
+    factors: list[Factor],
+) -> dict[str, dict[str, Any]]:
+    """Aggregate per-regime best configs into named buckets (#123).
+
+    Pure post-processing over :func:`recommend_per_regime`'s output --
+    groups regimes into named buckets via ``bucket_fn`` and aggregates
+    each bucket's members' best configs (median for continuous/discrete
+    factors, mode for categorical). Cheap enough to call repeatedly with
+    different ``bucket_fn``s (e.g. finer-grained groupings) against the
+    same search results.
+
+    Args:
+        per_regime_best: Output of :func:`recommend_per_regime`.
+        regimes: The same regime dict passed to :func:`recommend_per_regime`
+            (``bucket_fn`` receives each regime's descriptor, not just its
+            name).
+        bucket_fn: Maps ``(regime_name, regime_dict)`` to a bucket name;
+            regimes sharing a bucket name have their best configs
+            aggregated together.
+        factors: The same factor list passed to :func:`recommend_per_regime`.
+
+    Returns:
+        Mapping from bucket name to its aggregated recommended config.
+    """
+    bucket_members: dict[str, list[str]] = defaultdict(list)
+    for name, regime in regimes.items():
+        bucket_members[bucket_fn(name, regime)].append(name)
+
+    factors_by_name = {f.name: f for f in factors}
+    return {
+        bucket: {
+            key: _aggregate_factor_values(
+                factors_by_name[key],
+                [per_regime_best[member][key] for member in members],
+            )
+            for key in factors_by_name
+        }
+        for bucket, members in bucket_members.items()
+    }
+
+
 def recommend_bucketed_config(  # ruff: ignore[too-many-arguments]
     regimes: dict[str, dict[str, Any]],
     bucket_fn: Callable[[str, dict[str, Any]], str],
@@ -350,6 +474,11 @@ def recommend_bucketed_config(  # ruff: ignore[too-many-arguments]
     continuous/discrete factors, mode for categorical) into one
     recommended config per bucket.
 
+    A convenience wrapper composing :func:`recommend_per_regime` (the
+    expensive search) and :func:`aggregate_bucketed_config` (cheap
+    post-processing) -- call those directly if you want to try more than
+    one ``bucket_fn`` without repeating the search.
+
     Args:
         regimes: Mapping from regime name to a regime descriptor dict
             (whatever ``world_factory`` needs to fix that regime).
@@ -374,50 +503,16 @@ def recommend_bucketed_config(  # ruff: ignore[too-many-arguments]
 
     Returns:
         Mapping from bucket name to its aggregated recommended config.
-
-    Raises:
-        ValueError: If ``regimes`` is empty, or ``primary`` doesn't match
-            any name in ``observables``.
     """
-    if not regimes:
-        msg = "recommend_bucketed_config: regimes must be non-empty"
-        raise ValueError(msg)
-    matching = [o for o in observables if o.name == primary]
-    if not matching:
-        msg = f"primary={primary!r} not found in observables"
-        raise ValueError(msg)
-    minimize = matching[0].direction == Direction.MINIMIZE
-
-    per_regime_best: dict[str, dict[str, Any]] = {}
-    bucket_members: dict[str, list[str]] = defaultdict(list)
-    for name, regime in regimes.items():
-        world = world_factory(regime)
-        table = run_adaptive(
-            world,
-            scorer,
-            factors,
-            observables,
-            n_trials=n_trials,
-            n_reps=n_reps,
-            seed=seed,
-        )
-        primary_col = table.observable_names.index(primary)
-        best_i = (
-            int(np.argmin(table.scores[:, primary_col]))
-            if minimize
-            else int(np.argmax(table.scores[:, primary_col]))
-        )
-        per_regime_best[name] = table.configs[best_i]
-        bucket_members[bucket_fn(name, regime)].append(name)
-
-    factors_by_name = {f.name: f for f in factors}
-    return {
-        bucket: {
-            key: _aggregate_factor_values(
-                factors_by_name[key],
-                [per_regime_best[member][key] for member in members],
-            )
-            for key in factors_by_name
-        }
-        for bucket, members in bucket_members.items()
-    }
+    per_regime_best = recommend_per_regime(
+        regimes,
+        world_factory,
+        scorer,
+        factors,
+        observables,
+        primary=primary,
+        n_trials=n_trials,
+        n_reps=n_reps,
+        seed=seed,
+    )
+    return aggregate_bucketed_config(per_regime_best, regimes, bucket_fn, factors)
