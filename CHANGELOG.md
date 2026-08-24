@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 - `recommend_bucketed_config()`: the discrete counterpart to `RegimeSurrogate` (#123). For a handful of named regimes too sparse (and too far outside any existing training data) for a surrogate to extrapolate across sensibly, runs `run_adaptive` independently per regime, picks each regime's best-found config by a primary objective, groups regimes into named buckets, and aggregates each bucket's per-regime best configs (median for continuous/discrete factors, mode for categorical) into one recommended config per bucket.
 - `recommend_bucketed_config()` split into `recommend_per_regime()` (the expensive adaptive search) and `aggregate_bucketed_config()` (cheap post-processing), with `recommend_bucketed_config()` now a thin wrapper composing them. Lets a caller experiment with different `bucket_fn` groupings against the same search results without re-running `run_adaptive` for every attempt -- found necessary in practice deriving VBPCApy buckets, where a first grouping choice performed poorly and needed re-grouping without repeating an hours-long search.
 
+### Fixed
+
+- `reduce_factors()` no longer lets a NaN-valued observable (e.g. a Type-I rate that's legitimately undefined outside null regimes) silently corrupt every other observable's importance for the same factor. It aggregated via `np.maximum`, which propagates NaN (`np.maximum(4.05, nan) == nan`); one conditionally-undefined observable could erase a real, significant importance value found via a *different* observable, dropping the factor with no warning or error. Now uses NaN-safe `np.fmax`, and warns when a factor's importance is NaN across *every* observable (dropped for lack of data, not confirmed unimportance) (#119).
+
 ## [0.2.0] — 2026-08-17
 
 ### Added

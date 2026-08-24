@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import warnings
 from typing import Any
 
 import numpy as np
@@ -598,6 +599,50 @@ def test_reduce_high_threshold_drops_all(continuous_factors: list[Factor]) -> No
     importance = {"y": np.array([0.1, 0.1])}
     kept = reduce_factors(continuous_factors, importance, threshold=0.5)
     assert len(kept) == 0
+
+
+def test_reduce_nan_in_one_observable_does_not_erase_another(
+    continuous_factors: list[Factor],
+) -> None:
+    """A NaN-valued observable (#119) can't erase a real signal found elsewhere.
+
+    alpha has a real, large importance (0.5) on obs1; obs2 -- a
+    conditionally-undefined observable (e.g. a Type-I rate) -- is NaN for
+    every factor. Before #119's fix, np.maximum propagated that NaN and
+    silently dropped alpha despite obs1's real signal.
+    """
+    importance = {
+        "obs1": np.array([0.5, 0.01]),
+        "obs2": np.array([np.nan, np.nan]),
+    }
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        kept = reduce_factors(continuous_factors, importance, threshold=0.1)
+    names = [f.name for f in kept]
+    assert "alpha" in names
+    assert "beta" not in names
+
+
+def test_reduce_all_nan_for_factor_drops_and_warns(
+    continuous_factors: list[Factor],
+) -> None:
+    """A factor NaN across every observable is dropped, but with a warning."""
+    importance = {
+        "obs1": np.array([np.nan, 0.5]),
+        "obs2": np.array([np.nan, 0.01]),
+    }
+    with pytest.warns(UserWarning, match="alpha"):
+        kept = reduce_factors(continuous_factors, importance, threshold=0.1)
+    names = [f.name for f in kept]
+    assert "alpha" not in names
+    assert "beta" in names
+
+
+def test_reduce_no_nan_does_not_warn(continuous_factors: list[Factor]) -> None:
+    importance = {"y": np.array([0.5, 0.01])}
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        reduce_factors(continuous_factors, importance, threshold=0.1)
 
 
 # ---------------------------------------------------------------------------
