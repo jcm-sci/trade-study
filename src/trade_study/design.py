@@ -6,6 +6,7 @@ Wraps pyDOE3 for grid construction and SALib for sensitivity screening.
 from __future__ import annotations
 
 import inspect
+import warnings
 from dataclasses import dataclass, field
 from enum import Enum
 from itertools import product
@@ -703,13 +704,39 @@ def reduce_factors(
 
     Returns:
         Reduced list of influential factors.
+
+    Warns:
+        UserWarning: If every observable's importance is NaN for one or
+            more factors (#119) -- those factors are dropped (there's no
+            valid data to compare against ``threshold``), but that
+            reflects missing data, not confirmed unimportance.
     """
     continuous = [f for f in factors if f.factor_type == FactorType.CONTINUOUS]
     non_continuous = [f for f in factors if f.factor_type != FactorType.CONTINUOUS]
 
-    max_importance = np.zeros(len(continuous))
+    # NaN-filled, not zero-filled: a factor with zero valid (non-NaN)
+    # measurements across every observable must stay NaN throughout, not
+    # silently settle at 0.0 -- indistinguishable from "confirmed
+    # unimportant" otherwise. np.fmax (not np.maximum) ignores NaN in
+    # either operand rather than propagating it, so one observable that's
+    # legitimately undefined in some regimes (e.g. a Type-I rate, NaN
+    # outside null regimes) can't erase a real, significant importance
+    # value a *different* observable found for the same factor (#119).
+    max_importance = np.full(len(continuous), np.nan)
     for arr in importance.values():
-        max_importance = np.maximum(max_importance, arr)
+        max_importance = np.fmax(max_importance, arr)
+
+    all_nan = np.isnan(max_importance)
+    if all_nan.any():
+        names = [continuous[i].name for i in np.flatnonzero(all_nan)]
+        warnings.warn(
+            f"reduce_factors: every observable's importance is NaN for "
+            f"{names} -- dropping them from the reduced list, but this "
+            f"reflects missing data, not confirmed unimportance. See "
+            f"https://github.com/jcm-sci/trade-study/issues/119.",
+            UserWarning,
+            stacklevel=2,
+        )
 
     kept = [
         f for f, imp in zip(continuous, max_importance, strict=True) if imp >= threshold
