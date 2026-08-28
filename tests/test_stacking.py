@@ -7,7 +7,12 @@ from typing import Any
 import numpy as np
 import pytest
 
-from trade_study.stacking import ensemble_predict, stack_bayesian, stack_scores
+from trade_study.stacking import (
+    ensemble_predict,
+    stack_bayesian,
+    stack_proportional,
+    stack_scores,
+)
 
 RNG = np.random.default_rng(42)
 
@@ -121,6 +126,90 @@ def test_stack_scores_shape() -> None:
 def test_stack_scores_dtype() -> None:
     scores = RNG.standard_normal((2, 10))
     weights = stack_scores(scores)
+    assert weights.dtype == np.float64
+
+
+# ---------------------------------------------------------------------------
+# stack_proportional
+# ---------------------------------------------------------------------------
+
+
+def test_stack_proportional_weights_sum_to_one() -> None:
+    scores = RNG.standard_normal((3, 50))
+    weights = stack_proportional(scores)
+    assert np.sum(weights) == pytest.approx(1.0)
+
+
+def test_stack_proportional_weights_non_negative() -> None:
+    scores = RNG.standard_normal((3, 50))
+    weights = stack_proportional(scores)
+    assert np.all(weights >= 0.0)
+
+
+def test_stack_proportional_near_tie_splits_smoothly() -> None:
+    """A tiny gap between two models shouldn't collapse to winner-take-all.
+
+    Unlike stack_scores (a linear program that snaps to the single best
+    model for any nonzero gap), stack_proportional should give both
+    near-tied models comparable weight.
+    """
+    scores = np.array([
+        [0.70, 0.70, 0.70, 0.70],
+        [0.71, 0.71, 0.71, 0.71],  # barely better
+        [0.10, 0.10, 0.10, 0.10],  # clearly worse
+    ])
+    weights = stack_proportional(scores, maximize=True)
+    assert weights[0] == pytest.approx(weights[1], abs=0.05)
+    assert weights[2] < weights[0]
+
+
+def test_stack_proportional_dominant_model_gets_most_weight_minimize() -> None:
+    scores = np.array([
+        [0.1, 0.2, 0.1, 0.15],  # best (lowest)
+        [5.0, 6.0, 5.5, 5.2],
+        [9.0, 8.0, 9.5, 8.8],
+    ])
+    weights = stack_proportional(scores, maximize=False)
+    assert weights[0] > weights[1] > weights[2]
+
+
+def test_stack_proportional_dominant_model_gets_most_weight_maximize() -> None:
+    scores = np.array([
+        [9.0, 8.5, 9.2, 8.8],  # best (highest)
+        [1.0, 1.5, 1.2, 1.1],
+        [0.1, 0.2, 0.15, 0.1],
+    ])
+    weights = stack_proportional(scores, maximize=True)
+    assert weights[0] > weights[1] > weights[2]
+
+
+def test_stack_proportional_uniform_when_all_equal() -> None:
+    """No model distinguishable by score -> falls back to a uniform split."""
+    scores = np.full((4, 10), 0.5)
+    weights = stack_proportional(scores, maximize=True)
+    np.testing.assert_allclose(weights, np.full(4, 0.25))
+
+
+def test_stack_proportional_zero_score_does_not_blow_up() -> None:
+    """A model scoring exactly 0 (minimize) shouldn't produce inf/nan weights."""
+    scores = np.array([
+        [0.0, 0.0, 0.0],
+        [1.0, 1.0, 1.0],
+    ])
+    weights = stack_proportional(scores, maximize=False)
+    assert np.all(np.isfinite(weights))
+    assert weights[0] > weights[1]
+
+
+def test_stack_proportional_shape() -> None:
+    scores = RNG.standard_normal((4, 20))
+    weights = stack_proportional(scores)
+    assert weights.shape == (4,)
+
+
+def test_stack_proportional_dtype() -> None:
+    scores = RNG.standard_normal((2, 10))
+    weights = stack_proportional(scores)
     assert weights.dtype == np.float64
 
 
