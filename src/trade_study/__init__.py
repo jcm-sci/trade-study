@@ -36,7 +36,7 @@ from .regime import (
 )
 from .runner import run_adaptive, run_grid, run_hyperband, run_successive_halving
 from .sensitivity import TableSensitivity, sensitivity_from_table
-from .stacking import ensemble_predict, stack_bayesian, stack_scores
+from .stacking import ensemble_predict, stack_bayesian, stack_proportional, stack_scores
 from .study import (
     Phase,
     Study,
@@ -95,6 +95,7 @@ __all__ = [
     "sensitivity_from_table",
     "sobol_indices",
     "stack_bayesian",
+    "stack_proportional",
     "stack_scores",
     "top_k_pareto_filter",
     "weighted_sum_filter",
