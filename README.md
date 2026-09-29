@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
-[![jcm-sci](https://img.shields.io/badge/jcm--sci-jcmacdonald.dev-blue)](https://jcmacdonald.dev/software/)
+[![jcm-sci](https://img.shields.io/badge/jcm--sci-jcmacdonald.dev-blue)](https://jcmacdonald.dev/projects/)
 
 Multi-objective trade-study orchestration: define factors, build
 parameter grids, run hierarchical study phases, and extract Pareto
@@ -37,13 +37,13 @@ This package targets researchers and practitioners who need:
 
 ## Why trade-study?
 
-| Need | Without trade-study | With trade-study |
-|------|---------------------|------------------|
-| Parameter grid | Manual `itertools.product` or one-off scripts | `build_grid(factors, method="sobol")` — full factorial, LHS, Sobol, Halton |
-| Multi-objective ranking | Call pymoo directly, handle direction normalization | `extract_front(scores, directions)` — direction-aware |
-| Phased studies | Custom loop with manual filtering between stages | `Study(phases=[Phase(..., filter_fn=top_k_pareto_filter(k=20)), ...])` |
-| Adaptive search | Set up optuna study from scratch | `run_adaptive(world, scorer, factors, observables, n_trials=600)` |
-| Reproducibility | Scattered scripts, no standard protocol | `Simulator` / `Scorer` protocols + `save_results()` / `load_results()` |
+| Need                    | Without trade-study                                 | With trade-study                                                           |
+| ----------------------- | --------------------------------------------------- | -------------------------------------------------------------------------- |
+| Parameter grid          | Manual `itertools.product` or one-off scripts       | `build_grid(factors, method="sobol")` — full factorial, LHS, Sobol, Halton |
+| Multi-objective ranking | Call pymoo directly, handle direction normalization | `extract_front(scores, directions)` — direction-aware                      |
+| Phased studies          | Custom loop with manual filtering between stages    | `Study(phases=[Phase(..., filter_fn=top_k_pareto_filter(k=20)), ...])`     |
+| Adaptive search         | Set up optuna study from scratch                    | `run_adaptive(world, scorer, factors, observables, n_trials=600)`          |
+| Reproducibility         | Scattered scripts, no standard protocol             | `Simulator` / `Scorer` protocols + `save_results()` / `load_results()`     |
 
 Existing tools solve pieces of this problem — [optuna](https://optuna.org/) for adaptive optimization, [pymoo](https://pymoo.org/) for multi-objective solvers, [SALib](https://salib.readthedocs.io/) for sensitivity analysis — but none provide the **hierarchical phase orchestration** that connects them into a single study.
 
@@ -131,15 +131,15 @@ Or install only the extras you need:
 pip install trade-study[design,pareto]
 ```
 
-| Extra | Packages | Purpose |
-|-------|----------|---------|
-| `design` | [pyDOE3](https://github.com/relf/pyDOE3), [SALib](https://github.com/SALib/SALib), [scipy](https://scipy.org/) | Grid construction and sensitivity screening |
-| `pareto` | [pymoo](https://pymoo.org/) | Non-dominated sorting and indicators |
-| `scoring` | [scoringrules](https://github.com/frazane/scoringrules) | Proper scoring rules (CRPS, WIS, etc.) |
-| `stacking` | [arviz](https://github.com/arviz-devs/arviz), scipy | Bayesian and score-based ensemble weights |
-| `adaptive` | [optuna](https://optuna.org/) | Multi-objective Bayesian optimization |
-| `parallel` | joblib | Parallel grid execution |
-| `all` | All of the above | |
+| Extra      | Packages                                                                                                       | Purpose                                     |
+| ---------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `design`   | [pyDOE3](https://github.com/relf/pyDOE3), [SALib](https://github.com/SALib/SALib), [scipy](https://scipy.org/) | Grid construction and sensitivity screening |
+| `pareto`   | [pymoo](https://pymoo.org/)                                                                                    | Non-dominated sorting and indicators        |
+| `scoring`  | [scoringrules](https://github.com/frazane/scoringrules)                                                        | Proper scoring rules (CRPS, WIS, etc.)      |
+| `stacking` | [arviz](https://github.com/arviz-devs/arviz), scipy                                                            | Bayesian and score-based ensemble weights   |
+| `adaptive` | [optuna](https://optuna.org/)                                                                                  | Multi-objective Bayesian optimization       |
+| `parallel` | joblib                                                                                                         | Parallel grid execution                     |
+| `all`      | All of the above                                                                                               |                                             |
 
 **Core dependency**: numpy only.
 
@@ -223,9 +223,9 @@ and Sobol sensitivity analysis.
 
 ## Related packages
 
-| Package | Description |
-|---------|-------------|
-| [TradeStudy.jl](https://github.com/jcm-sci/TradeStudy.jl) | Julia implementation of the same framework |
+| Package                                                   | Description                                                                                     |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| [TradeStudy.jl](https://github.com/jcm-sci/TradeStudy.jl) | Inactive design scaffold for a possible Julia port; it does not contain a usable implementation |
 
 ## Development
 
