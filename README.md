@@ -49,6 +49,10 @@ Existing tools solve pieces of this problem — [optuna](https://optuna.org/) fo
 
 ## Quick start
 
+This wiring sketch assumes domain-specific `MySimulator` and `MyScorer`
+implementations like those shown under [Protocols](#protocols). See the worked
+guides in the documentation for complete, executable examples.
+
 ```python
 from trade_study import (
     Direction,
@@ -92,7 +96,6 @@ study.run(n_jobs=-1)
 # 4. Inspect results
 print(study.summary())
 front = study.front("benchmark")  # non-dominated config indices
-hv = study.front_hypervolume("benchmark", ref_point)  # hypervolume indicator
 ```
 
 ### Protocols
@@ -137,7 +140,7 @@ pip install trade-study[design,pareto]
 | `pareto`   | [pymoo](https://pymoo.org/)                                                                                    | Non-dominated sorting and indicators        |
 | `scoring`  | [scoringrules](https://github.com/frazane/scoringrules)                                                        | Proper scoring rules (CRPS, WIS, etc.)      |
 | `stacking` | [arviz](https://github.com/arviz-devs/arviz), scipy                                                            | Bayesian and score-based ensemble weights   |
-| `adaptive` | [optuna](https://optuna.org/)                                                                                  | Multi-objective Bayesian optimization       |
+| `adaptive` | [optuna](https://optuna.org/)                                                                                  | Adaptive multi-objective search (NSGA-II)   |
 | `parallel` | joblib                                                                                                         | Parallel grid execution                     |
 | `all`      | All of the above                                                                                               |                                             |
 
@@ -167,7 +170,7 @@ from trade_study import run_grid, run_adaptive
 # Grid mode: evaluate all configs (optional parallelism)
 results = run_grid(world, scorer, grid, observables, n_jobs=-1)
 
-# Adaptive mode: multi-objective Bayesian optimization (NSGA-II)
+# Adaptive mode: evolutionary multi-objective optimization (Optuna NSGA-II)
 results = run_adaptive(world, scorer, factors, observables, n_trials=600)
 ```
 
@@ -184,9 +187,10 @@ hv = hypervolume(results.scores[front_idx], ref_point, directions)
 ### Stacking
 
 ```python
-from trade_study import stack_scores, stack_bayesian, ensemble_predict
+from trade_study import stack_scores, stack_bayesian, stack_proportional, ensemble_predict
 
 weights = stack_scores(score_matrix)  # simplex-constrained optimization
+weights = stack_proportional(score_matrix)  # preserve weight across near ties
 weights = stack_bayesian(idata_dict)  # arviz stacking (Yao et al. 2018)
 combined = ensemble_predict(predictions, weights)
 ```
@@ -216,10 +220,15 @@ surrogate = fit_surrogate(results, method="gp")
 regime_surrogate = fit_regime_surrogate(results, regime_cols=["n", "p"])
 ```
 
+Surrogate fits report cross-validated `cv_r2` and `cv_rmse`; check those
+diagnostics before trusting recommendations or post-hoc sensitivity results.
+
 `Constraint` / `feasibility_filter` express infeasible regions of the
 design space; `FactorConstraint` couples factors during grid
 construction (e.g. keep `x + y <= 1`); `screen()` supports both Morris
-and Sobol sensitivity analysis.
+and Sobol sensitivity analysis. `run_grid(..., n_reps=N)` supports replicated
+trials, and `sensitivity_from_table()` estimates post-hoc sensitivity from an
+existing results table through a validated surrogate.
 
 ## Related packages
 
