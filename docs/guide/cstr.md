@@ -192,8 +192,8 @@ for parallel execution via joblib:
 
 When the design space is too large for a grid sweep, use
 `Phase(grid="adaptive")` for optuna-driven multi-objective
-Bayesian optimisation.  The `factors` argument on `Study` provides
-the parameter bounds:
+evolutionary optimisation with NSGA-II. The `factors` argument on `Study`
+provides the parameter bounds:
 
 ```python
 --8<-- "examples/cstr_study.py:adaptive"
