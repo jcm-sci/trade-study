@@ -244,6 +244,7 @@ def run_adaptive(
                     f.name,
                     f.bounds[0],
                     f.bounds[1],
+                    log=f.log_scale,
                 )
             elif f.levels is not None and f.factor_type in {
                 FactorType.CATEGORICAL,

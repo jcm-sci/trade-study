@@ -14,6 +14,8 @@ from .design import (
     reduce_factors,
     screen,
     sobol_indices,
+    unit_to_value,
+    value_to_unit,
 )
 from .io import load_results, save_results
 from .protocols import (
@@ -98,5 +100,7 @@ __all__ = [
     "stack_proportional",
     "stack_scores",
     "top_k_pareto_filter",
+    "unit_to_value",
+    "value_to_unit",
     "weighted_sum_filter",
 ]
