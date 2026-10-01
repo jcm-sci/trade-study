@@ -175,6 +175,32 @@ class SurrogateModel:
             for name, model in zip(self.observable_names, self.models, strict=True)
         }
 
+    def spread_batch(
+        self,
+        configs: Sequence[dict[str, Any]],
+    ) -> dict[str, NDArray[np.float64]]:
+        """Predictive spread per observable for a batch of configs (#115).
+
+        For ``method="gp"`` this is the predictive standard deviation; for
+        ``method="rf"`` it is the standard deviation of the individual trees'
+        predictions, a relative (not calibrated) measure of disagreement.
+
+        Args:
+            configs: Sequence of factor-keyed config dicts.
+
+        Returns:
+            Mapping from observable name to a length-``len(configs)`` array.
+        """
+        x = self.encoder.transform(configs)
+        out: dict[str, NDArray[np.float64]] = {}
+        for name, model in zip(self.observable_names, self.models, strict=True):
+            if self.method == "gp":
+                _, std = model.predict(x, return_std=True)
+            else:
+                std = np.std([tree.predict(x) for tree in model.estimators_], axis=0)
+            out[name] = np.asarray(std, dtype=np.float64)
+        return out
+
     def uncertainty(self, config: dict[str, Any]) -> dict[str, float]:
         """Predictive standard deviation per observable (GP only).
 
