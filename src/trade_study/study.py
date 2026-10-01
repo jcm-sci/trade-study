@@ -6,12 +6,16 @@ and optionally filters configs for the next phase.
 
 from __future__ import annotations
 
+import json
+import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from ._pareto import extract_front, hypervolume, pareto_rank
+from .io import load_results, save_results
 from .protocols import Direction
 from .runner import run_adaptive, run_grid
 from .stacking import stack_scores
@@ -207,6 +211,7 @@ class Study:
         *,
         n_jobs: int = 1,
         callback: ProgressCallback | None = None,
+        checkpoint_dir: str | Path | None = None,
     ) -> None:
         """Execute all phases sequentially.
 
@@ -214,6 +219,13 @@ class Study:
             n_jobs: Number of parallel workers for grid phases.
             callback: Optional progress callback invoked after each trial
                 with ``(trial_index, total_trials, trial_result)``.
+            checkpoint_dir: Optional directory for per-phase checkpoints
+                (#75). Each completed phase is saved there; on a rerun,
+                phases already on disk are loaded instead of run, and
+                filters are replayed on them. Results produced elsewhere
+                (for example reduced from cluster shards) can be written
+                into a phase's directory with :func:`save_results` to
+                stand in for running it.
 
         Raises:
             ValueError: If a callable grid is used on the first phase
@@ -221,8 +233,21 @@ class Study:
         """
         carry_grid: list[dict[str, Any]] | None = None
         prev_result: ResultsTable | None = None
+        checkpoint = Path(checkpoint_dir) if checkpoint_dir is not None else None
+        if checkpoint is not None:
+            self._write_index(checkpoint)
 
-        for phase in self.phases:
+        for index, phase in enumerate(self.phases):
+            saved = (
+                self._phase_dir(checkpoint, index) if checkpoint is not None else None
+            )
+            if saved is not None and (saved / "meta.json").exists():
+                result = load_results(saved)
+                self._results[phase.name] = result
+                prev_result = result
+                carry_grid = self._carry(phase, result)
+                continue
+
             # Resolve phase-level overrides (multi-fidelity support)
             world = phase.world if phase.world is not None else self.world
             scorer = phase.scorer if phase.scorer is not None else self.scorer
@@ -269,20 +294,86 @@ class Study:
 
             self._results[phase.name] = result
             prev_result = result
+            if saved is not None:
+                save_results(result, saved)
+            carry_grid = self._carry(phase, result)
 
-            if phase.filter_fn is not None:
-                # Filter on aggregated per-design-point scores when
-                # replicated (#112), so filters like top_k_pareto_filter
-                # rank design points rather than individual noisy
-                # replicates. The raw per-replicate table is still stored
-                # above via self._results for downstream inspection.
-                filter_source = (
-                    result.aggregate_replicates() if phase.n_reps > 1 else result
+    def _carry(self, phase: Phase, result: ResultsTable) -> list[dict[str, Any]] | None:
+        """Return the configs a phase passes on, or ``None`` when terminal.
+
+        Filters run on aggregated per-design-point scores when replicated
+        (#112), so filters like ``top_k_pareto_filter`` rank design points
+        rather than individual noisy replicates; the raw per-replicate table
+        is kept in the study results.
+        """
+        if phase.filter_fn is None:
+            return None
+        source = result.aggregate_replicates() if phase.n_reps > 1 else result
+        keep = phase.filter_fn(source, self.observables)
+        return [source.configs[i] for i in keep]
+
+    def _phase_dir(self, root: Path, index: int) -> Path:
+        name = re.sub(r"[^A-Za-z0-9_.-]+", "_", self.phases[index].name)
+        return root / f"{index:02d}_{name}"
+
+    def _write_index(self, root: Path) -> None:
+        """Record the phase order, refusing a checkpoint of another study.
+
+        Raises:
+            ValueError: If ``root`` holds a checkpoint with different phases.
+        """
+        names = [phase.name for phase in self.phases]
+        index_path = root / "study.json"
+        if index_path.exists():
+            recorded = json.loads(index_path.read_text())["phases"]
+            if recorded != names:
+                msg = (
+                    f"Checkpoint at {root} was written for phases {recorded}, "
+                    f"not {names}"
                 )
-                keep = phase.filter_fn(filter_source, self.observables)
-                carry_grid = [filter_source.configs[i] for i in keep]
-            else:
-                carry_grid = None
+                raise ValueError(msg)
+            return
+        root.mkdir(parents=True, exist_ok=True)
+        index_path.write_text(json.dumps({"phases": names}, indent=2))
+
+    def save(self, path: str | Path) -> None:
+        """Save every completed phase's results as a checkpoint (#75).
+
+        Args:
+            path: Checkpoint directory, compatible with
+                ``run(checkpoint_dir=...)``.
+        """
+        root = Path(path)
+        self._write_index(root)
+        for index, phase in enumerate(self.phases):
+            if phase.name in self._results:
+                save_results(self._results[phase.name], self._phase_dir(root, index))
+
+    def load(self, path: str | Path) -> list[str]:
+        """Load the completed phases of a checkpoint into this study.
+
+        Args:
+            path: Directory written by :meth:`save` or by
+                ``run(checkpoint_dir=...)``.
+
+        Returns:
+            Names of the phases loaded.
+
+        Raises:
+            FileNotFoundError: If ``path`` holds no checkpoint.
+        """
+        root = Path(path)
+        if not (root / "study.json").exists():
+            msg = f"No study checkpoint at {root}"
+            raise FileNotFoundError(msg)
+        self._write_index(root)
+        loaded = []
+        for index, phase in enumerate(self.phases):
+            saved = self._phase_dir(root, index)
+            if (saved / "meta.json").exists():
+                self._results[phase.name] = load_results(saved)
+                loaded.append(phase.name)
+        return loaded
 
     def results(self, phase: str) -> ResultsTable:
         """Get results for a specific phase.
