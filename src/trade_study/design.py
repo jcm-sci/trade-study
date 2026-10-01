@@ -44,19 +44,24 @@ class Factor:
         factor_type: Continuous, discrete, or categorical.
         levels: For categorical/discrete: list of allowed values.
         bounds: For continuous: (low, high) tuple.
+        log_scale: For continuous factors with positive bounds: sample and
+            model the factor uniformly in ``log`` space, for parameters that
+            span orders of magnitude (#131).
     """
 
     name: str
     factor_type: FactorType
     levels: list[Any] | None = None
     bounds: tuple[float, float] | None = None
+    log_scale: bool = False
 
     def __post_init__(self) -> None:
         """Validate factor constraints.
 
         Raises:
             ValueError: If name is empty, continuous factor has missing or
-                invalid bounds, or discrete/categorical factor has empty
+                invalid bounds, a log-scale factor has non-positive bounds or
+                is not continuous, or discrete/categorical factor has empty
                 levels.
         """
         if not self.name:
@@ -73,7 +78,13 @@ class Factor:
             if lo >= hi:
                 msg = f"Continuous factor '{self.name}' requires lo < hi"
                 raise ValueError(msg)
+            if self.log_scale and lo <= 0:
+                msg = f"Log-scale factor '{self.name}' requires positive bounds"
+                raise ValueError(msg)
         else:
+            if self.log_scale:
+                msg = f"Factor '{self.name}': log_scale applies to continuous factors"
+                raise ValueError(msg)
             if self.levels is None:
                 msg = f"Factor '{self.name}' of type {self.factor_type} requires levels"
                 raise ValueError(msg)
@@ -226,6 +237,50 @@ def _full_factorial(
     return [c for c in configs if _all_feasible(c, constraints)]
 
 
+def unit_to_value(factor: Factor, unit: float) -> float:
+    """Map a unit-interval coordinate to a continuous factor's value.
+
+    Args:
+        factor: Continuous factor with bounds.
+        unit: Coordinate in [0, 1].
+
+    Returns:
+        ``lo + unit * (hi - lo)``, or its geometric counterpart for a
+        log-scale factor.
+    """
+    lo, hi = _sampling_bounds(factor)
+    value = lo + unit * (hi - lo)
+    return float(np.exp(value)) if factor.log_scale else float(value)
+
+
+def value_to_unit(factor: Factor, value: float) -> float:
+    """Map a continuous factor's value to its unit-interval coordinate.
+
+    Args:
+        factor: Continuous factor with bounds.
+        value: Factor value within its bounds.
+
+    Returns:
+        The inverse of :func:`unit_to_value`.
+    """
+    lo, hi = _sampling_bounds(factor)
+    coordinate = float(np.log(value)) if factor.log_scale else float(value)
+    return (coordinate - lo) / (hi - lo)
+
+
+def _sampling_bounds(factor: Factor) -> tuple[float, float]:
+    """Return the bounds of the space a continuous factor is sampled in.
+
+    Returns:
+        The factor's bounds, or their logarithms for a log-scale factor.
+    """
+    assert factor.bounds is not None  # ruff: ignore[assert] -- enforced
+    lo, hi = factor.bounds
+    if factor.log_scale:
+        return float(np.log(lo)), float(np.log(hi))
+    return float(lo), float(hi)
+
+
 def _row_to_config(
     row: NDArray[np.floating[Any]], factors: list[Factor]
 ) -> dict[str, Any]:
@@ -241,8 +296,7 @@ def _row_to_config(
     cfg: dict[str, Any] = {}
     for j, f in enumerate(factors):
         if f.factor_type == FactorType.CONTINUOUS and f.bounds is not None:
-            lo, hi = f.bounds
-            cfg[f.name] = lo + float(row[j]) * (hi - lo)
+            cfg[f.name] = unit_to_value(f, float(row[j]))
         elif f.levels is not None:
             idx = int(row[j] * len(f.levels))
             idx = min(idx, len(f.levels) - 1)
@@ -463,6 +517,37 @@ def _evaluate_averaged(
     }
 
 
+def _salib_problem(continuous: list[Factor]) -> dict[str, Any]:
+    """Build a SALib problem, sampling log-scale factors in log space.
+
+    Returns:
+        SALib problem dictionary; ``log_scale`` flags each factor sampled in
+        log space, so sensitivity indices refer to that scale.
+    """
+    return {
+        "num_vars": len(continuous),
+        "names": [f.name for f in continuous],
+        "bounds": [list(_sampling_bounds(f)) for f in continuous],
+        "log_scale": [f.log_scale for f in continuous],
+    }
+
+
+def _salib_config(
+    problem: dict[str, Any], row: NDArray[np.floating[Any]]
+) -> dict[str, Any]:
+    """Map a SALib sample row back to factor values.
+
+    Returns:
+        Config dictionary with log-scale factors exponentiated.
+    """
+    return {
+        name: float(np.exp(value)) if log else float(value)
+        for name, value, log in zip(
+            problem["names"], row, problem["log_scale"], strict=True
+        )
+    }
+
+
 def screen(
     run_fn: Callable[[dict[str, Any]], dict[str, float]],
     factors: list[Factor],
@@ -508,11 +593,7 @@ def screen(
         msg = f"n_reps must be >= 1; got {n_reps}"
         raise ValueError(msg)
 
-    problem: dict[str, Any] = {
-        "num_vars": len(continuous),
-        "names": [f.name for f in continuous],
-        "bounds": [list(f.bounds) for f in continuous if f.bounds is not None],
-    }
+    problem = _salib_problem(continuous)
 
     if method == "morris":
         return _screen_morris(run_fn, problem, n_trajectories, n_reps, seed)
@@ -543,7 +624,7 @@ def _screen_morris(
 
     results_by_obs: dict[str, list[float]] = {}
     for row in param_values:
-        cfg = dict(zip(problem["names"], row, strict=True))
+        cfg = _salib_config(problem, row)
         scores = _evaluate_averaged(run_fn, cfg, n_reps, supports_rep=supports_rep)
         for obs_name, val in scores.items():
             results_by_obs.setdefault(obs_name, []).append(val)
@@ -584,7 +665,7 @@ def _sobol_sample_and_evaluate(
 
     results_by_obs: dict[str, list[float]] = {}
     for row in param_values:
-        cfg = dict(zip(problem["names"], row, strict=True))
+        cfg = _salib_config(problem, row)
         scores = _evaluate_averaged(run_fn, cfg, n_reps, supports_rep=supports_rep)
         for obs_name, val in scores.items():
             results_by_obs.setdefault(obs_name, []).append(val)
@@ -670,11 +751,7 @@ def sobol_indices(
         msg = f"n_reps must be >= 1; got {n_reps}"
         raise ValueError(msg)
 
-    problem: dict[str, Any] = {
-        "num_vars": len(continuous),
-        "names": [f.name for f in continuous],
-        "bounds": [list(f.bounds) for f in continuous if f.bounds is not None],
-    }
+    problem = _salib_problem(continuous)
     results_by_obs = _sobol_sample_and_evaluate(
         run_fn, problem, n_samples, n_reps, seed
     )

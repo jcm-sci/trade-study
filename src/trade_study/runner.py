@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import inspect
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 
@@ -223,7 +223,7 @@ def run_adaptive(
 
     supports_rep = _generate_accepts_rep(world)
 
-    directions_str = [
+    directions_str: list[Literal["minimize", "maximize"]] = [
         "minimize" if o.direction == Direction.MINIMIZE else "maximize"
         for o in observables
     ]
@@ -244,6 +244,7 @@ def run_adaptive(
                     f.name,
                     f.bounds[0],
                     f.bounds[1],
+                    log=f.log_scale,
                 )
             elif f.levels is not None and f.factor_type in {
                 FactorType.CATEGORICAL,

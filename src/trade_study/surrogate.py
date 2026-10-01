@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from .design import Factor, FactorType
+from .design import Factor, FactorType, value_to_unit
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -100,9 +100,7 @@ class _FactorEncoder:
                     msg = f"config is missing factor {f.name!r}"
                     raise KeyError(msg)
                 if f.factor_type == FactorType.CONTINUOUS:
-                    assert f.bounds is not None  # ruff: ignore[assert] -- enforced
-                    lo, hi = f.bounds
-                    row.append((float(cfg[f.name]) - lo) / (hi - lo))
+                    row.append(value_to_unit(f, float(cfg[f.name])))
                 else:
                     assert f.levels is not None  # ruff: ignore[assert] -- enforced
                     value = cfg[f.name]
