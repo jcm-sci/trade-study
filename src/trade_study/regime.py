@@ -161,7 +161,7 @@ class RegimeSurrogate:
         """
         return self.inner.uncertainty(_merge(regime, config))
 
-    def recommend(
+    def recommend(  # ruff: ignore[too-many-arguments]
         self,
         regime: dict[str, Any],
         *,
@@ -171,12 +171,18 @@ class RegimeSurrogate:
         seed: int = 0,
         candidates: Sequence[dict[str, Any]] | None = None,
         warn_below_r2: float | None = 0.0,
+        risk: float = 0.0,
     ) -> dict[str, Any]:
         """Recommend a design-factor config at a query regime.
 
         Samples ``n_candidates`` configs from the design-factor space via
         a scrambled Sobol' sequence and returns the one whose surrogate
-        prediction for ``objective`` is best under ``mode``.
+        prediction for ``objective`` is best under ``mode``. With
+        ``risk > 0`` candidates are ranked pessimistically, by
+        ``prediction + risk * spread`` when minimizing and
+        ``prediction - risk * spread`` when maximizing, where ``spread`` is
+        :meth:`SurrogateModel.spread_batch`; this avoids picking the
+        candidate the surrogate is most optimistically wrong about (#115).
 
         Args:
             regime: Mapping of regime-feature names to values.
@@ -193,6 +199,8 @@ class RegimeSurrogate:
                 against a poorly-fit surrogate gets a signal right at the
                 point of use, not just buried in fit-time logs. Pass
                 ``None`` to disable.
+            risk: Non-negative multiple of the predictive spread added to
+                the ranking criterion; ``0`` ranks on predictions alone.
 
         Returns:
             The candidate config (a copy) achieving the best predicted
@@ -200,11 +208,14 @@ class RegimeSurrogate:
 
         Raises:
             ValueError: If ``objective`` is not a fitted observable, if
-                ``mode`` is not ``"min"`` or ``"max"``, or if there are
-                no candidates to score.
+                ``mode`` is not ``"min"`` or ``"max"``, if ``risk`` is
+                negative, or if there are no candidates to score.
         """
         if mode not in _SUPPORTED_MODES:
             msg = f"mode must be one of {sorted(_SUPPORTED_MODES)}; got {mode!r}"
+            raise ValueError(msg)
+        if risk < 0:
+            msg = f"risk must be non-negative; got {risk}"
             raise ValueError(msg)
         if objective not in self.inner.observable_names:
             msg = (
@@ -235,6 +246,10 @@ class RegimeSurrogate:
             msg = "recommend: no candidates to score"
             raise ValueError(msg)
         preds = self.predict_batch(regime, pool)[objective]
+        if risk > 0:
+            merged = [_merge(regime, c) for c in pool]
+            spread = self.inner.spread_batch(merged)[objective]
+            preds = preds + risk * spread if mode == "min" else preds - risk * spread
         idx = int(np.argmin(preds)) if mode == "min" else int(np.argmax(preds))
         return dict(pool[idx])
 

@@ -129,10 +129,14 @@ class AdaptiveSession:
 
     def _constraint_values(self, trial: optuna.trial.FrozenTrial) -> list[float]:
         scores = trial.user_attrs.get("scores", {})
-        return [
-            _constraint_value(c, float(scores.get(c.observable, np.inf)))
-            for c in self.constraints
-        ]
+        errors = trial.user_attrs.get("standard_error", {})
+        values = []
+        for c in self.constraints:
+            mean = float(scores.get(c.observable, np.inf))
+            error = float(errors.get(c.observable, np.nan))
+            bound = c.bound(mean, error if np.isfinite(error) else 0.0)
+            values.append(_constraint_value(c, bound))
+        return values
 
     def _suggest(self, trial: optuna.trial.Trial) -> dict[str, Any]:
         config: dict[str, Any] = {}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import operator as _operator
 from dataclasses import dataclass, field
 from enum import Enum
@@ -60,12 +61,18 @@ class Constraint:
         op: Comparison operator as a string (``">="`` ``"<="`` ``">"``
             ``"<"`` ``"=="`` ``"!="``).
         threshold: Scalar threshold value.
+        confidence: Optional one-sided confidence level in (0.5, 1). When
+            set, :meth:`ResultsTable.feasible` tests the pessimistic bound
+            ``mean + z * se`` (for ``<=``/``<``) or ``mean - z * se`` (for
+            ``>=``/``>``) instead of the mean, using each row's Monte Carlo
+            standard error (#115). Only inequality operators are allowed.
     """
 
     name: str
     observable: str
     op: str
     threshold: float
+    confidence: float | None = None
 
     def __post_init__(self) -> None:
         """Validate the comparison operator.
@@ -79,6 +86,38 @@ class Constraint:
                 f"Use one of {sorted(_OP_MAP)}"
             )
             raise ValueError(msg)
+        if self.confidence is not None:
+            if not 0.5 < self.confidence < 1.0:
+                msg = f"Constraint {self.name!r}: confidence must lie in (0.5, 1)"
+                raise ValueError(msg)
+            if self.op not in {"<=", "<", ">=", ">"}:
+                msg = (
+                    f"Constraint {self.name!r}: confidence needs an inequality "
+                    f"operator, got {self.op!r}"
+                )
+                raise ValueError(msg)
+
+    def bound(self, mean: float, standard_error: float) -> float:
+        """Return the value a confident constraint tests.
+
+        Args:
+            mean: Estimated value.
+            standard_error: Its Monte Carlo standard error.
+
+        Returns:
+            ``mean`` without ``confidence``; otherwise the one-sided bound
+            on the unfavourable side of ``threshold``.
+        """
+        if self.confidence is None:
+            return mean
+        from statistics import NormalDist
+
+        z = NormalDist().inv_cdf(self.confidence)
+        return (
+            mean + z * standard_error
+            if self.op in {"<=", "<"}
+            else (mean - z * standard_error)
+        )
 
     def check(self, value: float) -> bool:
         """Test whether a scalar value satisfies the constraint.
@@ -253,6 +292,9 @@ class ResultsTable:
         Raises:
             KeyError: If a constraint references a column not found in
                 either ``observable_names`` or ``annotation_names``.
+
+        A constraint with ``confidence`` needs per-row standard errors (see
+        :meth:`_standard_errors`), which raise ``ValueError`` when absent.
         """
         import numpy as np
 
@@ -272,8 +314,45 @@ class ResultsTable:
                     f"not found in observables or annotations"
                 )
                 raise KeyError(msg)
+            if con.confidence is not None:
+                errors = self._standard_errors(con.observable)
+                values = np.fromiter(
+                    itertools.starmap(con.bound, zip(values, errors, strict=True)),
+                    dtype=float,
+                )
             mask &= _OP_MAP[con.op](values, con.threshold)
         return mask
+
+    def _standard_errors(self, name: str) -> NDArray[np.floating[Any]]:
+        """Return each row's Monte Carlo standard error for ``name``.
+
+        Uses ``metadata["standard_error"][name]`` when present (as written by
+        ``AdaptiveSession``), otherwise ``score_std`` and ``n_reps`` from
+        :meth:`aggregate_replicates`.
+
+        Returns:
+            One standard error per row.
+
+        Raises:
+            ValueError: If a row carries neither.
+        """
+        import numpy as np
+
+        errors = []
+        for row, meta in enumerate(self.metadata or [{}] * len(self.configs)):
+            if name in meta.get("standard_error", {}):
+                errors.append(float(meta["standard_error"][name]))
+            elif name in meta.get("score_std", {}) and meta.get("n_reps", 0) > 1:
+                errors.append(
+                    float(meta["score_std"][name]) / np.sqrt(meta["n_reps"] - 1)
+                )
+            else:
+                msg = (
+                    f"Row {row} has no standard error for {name!r}; aggregate "
+                    "replicates first or report per-replicate scores"
+                )
+                raise ValueError(msg)
+        return np.asarray(errors, dtype=float)
 
     def aggregate_replicates(self) -> ResultsTable:
         """Collapse replicate rows into one row per design point (#112).
