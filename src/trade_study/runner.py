@@ -8,13 +8,12 @@ from __future__ import annotations
 
 import inspect
 import time
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from .protocols import (
     Annotation,
-    Direction,
     Observable,
     PartialEvaluator,
     ResultsTable,
@@ -25,8 +24,6 @@ from .protocols import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-
-    import optuna
 
     from .design import Factor
 
@@ -215,42 +212,17 @@ def run_adaptive(
     """
     import optuna as _optuna
 
-    from .design import FactorType
+    from .session import AdaptiveSession
 
     if n_reps < 1:
         msg = f"n_reps must be >= 1; got {n_reps}"
         raise ValueError(msg)
 
     supports_rep = _generate_accepts_rep(world)
-
-    directions_str: list[Literal["minimize", "maximize"]] = [
-        "minimize" if o.direction == Direction.MINIMIZE else "maximize"
-        for o in observables
-    ]
-
-    study = _optuna.create_study(
-        directions=directions_str,
-        sampler=_optuna.samplers.NSGAIISampler(seed=seed),
-    )
-
-    obs_names = [o.name for o in observables]
-    obs_weights = [o.weight for o in observables]
-
-    def objective(trial: optuna.trial.Trial) -> tuple[float, ...]:
-        config: dict[str, Any] = {}
-        for f in factors:
-            if f.factor_type == FactorType.CONTINUOUS and f.bounds is not None:
-                config[f.name] = trial.suggest_float(
-                    f.name,
-                    f.bounds[0],
-                    f.bounds[1],
-                    log=f.log_scale,
-                )
-            elif f.levels is not None and f.factor_type in {
-                FactorType.CATEGORICAL,
-                FactorType.DISCRETE,
-            }:
-                config[f.name] = trial.suggest_categorical(f.name, f.levels)
+    session = AdaptiveSession(factors, observables, seed=seed)
+    _optuna.logging.set_verbosity(_optuna.logging.WARNING)
+    for _ in range(n_trials):
+        ((trial_id, config),) = session.ask(1)
         rep_scores: list[dict[str, float]] = []
         for rep in range(n_reps):
             if supports_rep:
@@ -258,24 +230,19 @@ def run_adaptive(
             else:
                 truth, observations = world.generate(config)
             rep_scores.append(scorer.score(truth, observations, config))
-        return tuple(
-            float(np.mean([s.get(name, float("nan")) for s in rep_scores])) * w
-            for name, w in zip(obs_names, obs_weights, strict=True)
+        session.tell(
+            trial_id,
+            {
+                o.name: [s.get(o.name, float("nan")) for s in rep_scores]
+                for o in observables
+            },
         )
 
-    _optuna.logging.set_verbosity(_optuna.logging.WARNING)
-    study.optimize(objective, n_trials=n_trials)
-
-    configs = []
-    score_rows = []
-    for trial in study.trials:
-        configs.append(trial.params)
-        score_rows.append(list(trial.values))
-
+    table = session.results()
     return ResultsTable(
-        configs=configs,
-        scores=np.array(score_rows),
-        observable_names=obs_names,
+        configs=table.configs,
+        scores=table.scores,
+        observable_names=table.observable_names,
     )
 
 
