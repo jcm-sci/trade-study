@@ -38,6 +38,7 @@ from .regime import (
 )
 from .runner import run_adaptive, run_grid, run_hyperband, run_successive_halving
 from .sensitivity import TableSensitivity, sensitivity_from_table
+from .session import AdaptiveSession
 from .stacking import ensemble_predict, stack_bayesian, stack_proportional, stack_scores
 from .study import (
     Phase,
@@ -50,6 +51,7 @@ from .surrogate import SurrogateModel, fit_surrogate
 from .viz import plot_calibration, plot_front, plot_parallel, plot_scores
 
 __all__ = [
+    "AdaptiveSession",
     "Annotation",
     "Constraint",
     "Direction",
