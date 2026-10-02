@@ -18,6 +18,7 @@ from .design import (
     value_to_unit,
 )
 from .io import load_results, save_results
+from .paired import PairedDifference, paired_difference, paired_rank
 from .protocols import (
     Annotation,
     Constraint,
@@ -59,6 +60,7 @@ __all__ = [
     "FactorConstraint",
     "FactorType",
     "Observable",
+    "PairedDifference",
     "PartialEvaluator",
     "Phase",
     "RegimeSurrogate",
@@ -81,6 +83,8 @@ __all__ = [
     "hypervolume",
     "igd_plus",
     "load_results",
+    "paired_difference",
+    "paired_rank",
     "pareto_rank",
     "plot_calibration",
     "plot_front",
