@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from ._pareto import extract_front, hypervolume, pareto_rank
+from ._pareto import extract_front, hypervolume, igd_plus, pareto_rank
 from .io import load_results, save_results
 from .protocols import Direction
 from .runner import run_adaptive, run_grid
@@ -410,6 +410,85 @@ class Study:
         front_idx = extract_front(r.scores, dirs, wts)
         return hypervolume(r.scores[front_idx], ref_point, dirs, wts)
 
+    def compare_phases(
+        self,
+        ref_point: NDArray[np.floating[Any]] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Compare the fronts of the completed phases (#81).
+
+        Each phase is summarized over its design points: replicate rows are
+        averaged first when the phase ran with ``n_reps > 1``, as for
+        filtering, and rows with a non-finite score are left out of the
+        front. Each phase after the first is compared with the previous
+        completed phase by IGD+ in both directions:
+
+        * ``igd_plus_gain``: IGD+ of the previous front against this
+          phase's front, i.e. how far the previous front falls short of this
+          one. Positive when this phase found better trade-offs.
+        * ``igd_plus_loss``: IGD+ of this phase's front against the previous
+          front, i.e. how far this phase falls short of the previous one.
+          Zero when this front weakly dominates the previous front.
+
+        Args:
+            ref_point: Hypervolume reference point, in the observables'
+                units. Defaults to the worst value of each observable over
+                every phase's front, pushed outward by 10% of its range (by 1
+                when the range is zero), so hypervolumes are comparable
+                across phases.
+
+        Returns:
+            One dict per completed phase, in phase order, with ``phase``,
+            ``n_trials`` (design points), ``n_front``, ``hypervolume``,
+            ``best`` (best value of each observable over the phase's design
+            points) and ``igd_plus_gain``/``igd_plus_loss`` (``None`` for the
+            first phase). Phases without a finite front report NaN.
+        """
+        dirs = [o.direction for o in self.observables]
+        wts = [o.weight for o in self.observables]
+        tables = [
+            (phase.name, self._design_points(phase))
+            for phase in self.phases
+            if phase.name in self._results
+        ]
+        fronts = {
+            name: _finite_front(table.scores, dirs, wts) for name, table in tables
+        }
+        reference = (
+            np.asarray(ref_point, dtype=float)
+            if ref_point is not None
+            else _padded_worst(list(fronts.values()), dirs)
+        )
+        rows: list[dict[str, Any]] = []
+        previous: NDArray[np.floating[Any]] | None = None
+        for name, table in tables:
+            front = fronts[name]
+            row: dict[str, Any] = {
+                "phase": name,
+                "n_trials": len(table.configs),
+                "n_front": len(front),
+                "hypervolume": (
+                    hypervolume(front, reference, dirs, wts) if len(front) else np.nan
+                ),
+                "best": _best_values(table, self.observables),
+                "igd_plus_gain": None,
+                "igd_plus_loss": None,
+            }
+            if previous is not None:
+                comparable = len(front) > 0 and len(previous) > 0
+                row["igd_plus_gain"] = (
+                    igd_plus(previous, front, dirs, wts) if comparable else np.nan
+                )
+                row["igd_plus_loss"] = (
+                    igd_plus(front, previous, dirs, wts) if comparable else np.nan
+                )
+            rows.append(row)
+            previous = front
+        return rows
+
+    def _design_points(self, phase: Phase) -> ResultsTable:
+        result = self._results[phase.name]
+        return result.aggregate_replicates() if phase.n_reps > 1 else result
+
     def stack(
         self,
         phase: str,
@@ -447,3 +526,61 @@ class Study:
                 },
             }
         return out
+
+
+def _finite_front(
+    scores: NDArray[np.floating[Any]],
+    directions: list[Direction],
+    weights: list[float],
+) -> NDArray[np.floating[Any]]:
+    """Return the Pareto-optimal rows among rows with finite scores.
+
+    Returns:
+        Front scores, shape ``(n_front, n_observables)``.
+    """
+    finite = scores[np.all(np.isfinite(scores), axis=1)]
+    if len(finite) == 0:
+        return finite
+    return finite[extract_front(finite, directions, weights)]
+
+
+def _padded_worst(
+    fronts: list[NDArray[np.floating[Any]]],
+    directions: list[Direction],
+) -> NDArray[np.floating[Any]]:
+    """Return the worst front value per observable, pushed outward.
+
+    Returns:
+        Reference point dominated by every front point.
+    """
+    points = [front for front in fronts if len(front)]
+    if not points:
+        return np.zeros(len(directions))
+    union = np.vstack(points)
+    low, high = union.min(axis=0), union.max(axis=0)
+    pad = np.where(high > low, 0.1 * (high - low), 1.0)
+    maximize = np.array([d == Direction.MAXIMIZE for d in directions])
+    worst: NDArray[np.floating[Any]] = np.where(maximize, low - pad, high + pad)
+    return worst
+
+
+def _best_values(
+    table: ResultsTable,
+    observables: list[Observable],
+) -> dict[str, float]:
+    """Return the best finite value of each observable.
+
+    Returns:
+        Mapping from observable name to its best value (NaN if none).
+    """
+    best: dict[str, float] = {}
+    for obs in observables:
+        column = table.scores[:, table.observable_names.index(obs.name)]
+        column = column[np.isfinite(column)]
+        if len(column) == 0:
+            best[obs.name] = float("nan")
+        elif obs.direction == Direction.MAXIMIZE:
+            best[obs.name] = float(column.max())
+        else:
+            best[obs.name] = float(column.min())
+    return best

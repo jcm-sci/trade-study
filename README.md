@@ -96,6 +96,7 @@ study.run(n_jobs=-1)
 # 4. Inspect results
 print(study.summary())
 front = study.front("benchmark")  # non-dominated config indices
+study.compare_phases()  # per-phase hypervolume and IGD+ between successive fronts
 ```
 
 ### Protocols
