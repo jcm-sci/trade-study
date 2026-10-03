@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import inspect
 import time
+from copy import deepcopy
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from ._recovery import _grid_identity, _GridLedger
+from .cache import _bind_cache
 from .protocols import (
     Annotation,
     Observable,
@@ -27,6 +29,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
+    from .cache import EvaluationCache, _BoundCache
     from .design import Factor
 
     ProgressCallback = Callable[[int, int, TrialResult], None]
@@ -87,19 +90,51 @@ def _attempt_grid_task(
     *,
     supports_rep: bool,
     ledger: _GridLedger | None,
+    cache: _BoundCache | None,
 ) -> TrialResult | Exception:
     design_point, config, rep = task
+    cache_key = cache.key(config, rep) if cache is not None else None
+    evaluation_config = deepcopy(config) if cache is not None else config
     try:
-        result = _run_single(world, scorer, config, rep=rep, supports_rep=supports_rep)
+        result = _run_single(
+            world, scorer, evaluation_config, rep=rep, supports_rep=supports_rep
+        )
     # User evaluators may raise any Exception; the caller retries or re-raises it.
     except Exception as error:  # ruff: ignore[blind-except]
         if ledger is not None:
             ledger.record(design_point, rep, None, f"{type(error).__name__}: {error}")
         return error
     result.metadata["design_point"] = design_point
+    if cache is not None:
+        if cache.key(result.config, rep) != cache_key:
+            msg = "Cached evaluations must not mutate their configurations"
+            raise ValueError(msg)
+        cache.save(config, rep, result)
     if ledger is not None:
         ledger.record(design_point, rep, result, None)
     return result
+
+
+def _recover_grid_task(
+    task: _GridTask,
+    ledger: _GridLedger | None,
+    cache: _BoundCache | None,
+) -> TrialResult | None:
+    design_point, config, rep = task
+    if ledger is not None:
+        recovered = ledger.load(design_point, rep, config)
+        if recovered is not None:
+            if cache is not None:
+                cache.save(config, rep, recovered)
+            return recovered
+    if cache is not None:
+        cached = cache.load(config, rep)
+        if cached is not None:
+            cached.metadata["design_point"] = design_point
+            if ledger is not None:
+                ledger.record(design_point, rep, cached, None)
+            return cached
+    return None
 
 
 def _run_grid_task(
@@ -110,15 +145,14 @@ def _run_grid_task(
     supports_rep: bool,
     ledger: _GridLedger | None,
     max_retries: int,
+    cache: _BoundCache | None,
 ) -> TrialResult:
-    design_point, config, rep = task
-    if ledger is not None:
-        recovered = ledger.load(design_point, rep, config)
-        if recovered is not None:
-            return recovered
+    recovered = _recover_grid_task(task, ledger, cache)
+    if recovered is not None:
+        return recovered
     for attempt in range(max_retries + 1):
         result = _attempt_grid_task(
-            world, scorer, task, supports_rep=supports_rep, ledger=ledger
+            world, scorer, task, supports_rep=supports_rep, ledger=ledger, cache=cache
         )
         if isinstance(result, Exception):
             if attempt == max_retries:
@@ -144,6 +178,8 @@ def run_grid(  # ruff: ignore[too-many-arguments]
     checkpoint_path: str | Path | None = None,
     checkpoint_key: str | None = None,
     max_retries: int = 0,
+    cache: EvaluationCache | None = None,
+    cache_bypass: bool = False,
 ) -> ResultsTable:
     """Run all configurations in a grid.
 
@@ -177,6 +213,10 @@ def run_grid(  # ruff: ignore[too-many-arguments]
         max_retries: Additional attempts per unfinished task per invocation.
             Zero (default) propagates the first evaluation exception.
             Retries retain the same config and replicate id.
+        cache: Opt-in revision/replicate/fidelity/schema-aware evaluation reuse.
+            Independent experiments must use different replicate namespaces.
+        cache_bypass: Skip cache reads and writes. Completed checkpoint tasks
+            still resume; use a new checkpoint path to re-evaluate them.
 
     Returns:
         ResultsTable with scored results.
@@ -203,6 +243,11 @@ def run_grid(  # ruff: ignore[too-many-arguments]
     )
 
     supports_rep = _generate_accepts_rep(world)
+    bound_cache = (
+        _bind_cache(cache, world, scorer, observables, annotations)
+        if cache is not None and not cache_bypass
+        else None
+    )
     tasks = [
         (design_point, cfg, rep)
         for design_point, cfg in enumerate(grid)
@@ -220,6 +265,7 @@ def run_grid(  # ruff: ignore[too-many-arguments]
                 supports_rep=supports_rep,
                 ledger=ledger,
                 max_retries=max_retries,
+                cache=bound_cache,
             )
             results.append(r)
             if callback is not None:
@@ -235,6 +281,7 @@ def run_grid(  # ruff: ignore[too-many-arguments]
                 supports_rep=supports_rep,
                 ledger=ledger,
                 max_retries=max_retries,
+                cache=bound_cache,
             )
             for task in tasks
         )

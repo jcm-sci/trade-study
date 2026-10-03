@@ -24,6 +24,44 @@ between an external side effect and saving its result may require repeating
 that evaluation. Make side effects safe to repeat. Retry limits do not bound
 the number of explicit resume invocations.
 
+## Reusing identified evaluations
+
+Reuse is opt-in through an explicit cache:
+
+```python
+cache = EvaluationCache(
+    "evaluations.sqlite",
+    revision="simulator-v2-scorer-v1-data-v3-annotations-v1",
+    replicate_namespace="experiment-2026-seed-17",
+    fidelity="high",
+)
+results = run_grid(world, scorer, grid, observables, n_reps=3, cache=cache)
+```
+
+The key includes a typed canonical configuration, replicate id, caller revision,
+replicate namespace, fidelity, inspectable simulator/scorer class code,
+objective definitions and annotation semantics. Grid position and total replicate
+count are excluded: reordering designs or requesting more replicates can reuse
+identical existing evaluations. Raw result rows still retain the current grid's
+design-point ids. Different replicate ids and independent experiment namespaces
+remain distinct even when their configurations match.
+
+The caller must update the revision when instance settings, external data,
+globals or opaque callable behavior changes. The replicate namespace must
+identify the actual randomness/seed convention. Use a fresh namespace for an
+independent experiment; matching configuration alone never establishes reuse.
+Supported scalar/container configurations preserve types; opaque values are
+refused. Cached evaluators must not mutate their configuration.
+
+`cache_bypass=True` skips reads and writes, leaving stored evidence untouched.
+`cache.clear()` invalidates all contexts in the cache file. Changing identity
+creates a new context. Conflicting scores for one identity are refused.
+Metadata exposes `cache_hit`, `cache_key`, and the revision/namespace/fidelity
+context. Cached wall time is the original evaluation's time. Completed grid
+checkpoints can populate the cache without re-evaluation; bypassing the cache
+does not bypass checkpoints. Concurrent workers may evaluate an absent identity
+more than once before either saves; reuse does not promise exactly-once effects.
+
 ::: trade_study.run_grid
 
 ::: trade_study.run_adaptive
