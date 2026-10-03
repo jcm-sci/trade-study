@@ -6,6 +6,7 @@ Scoring, Pareto optimization, and Bayesian stacking.
 from ._pareto import extract_front, hypervolume, igd_plus, pareto_rank
 from ._scoring import coverage_curve, score
 from ._version import __version__
+from .cache import EvaluationCache
 from .design import (
     Factor,
     FactorConstraint,
@@ -57,6 +58,7 @@ __all__ = [
     "Annotation",
     "Constraint",
     "Direction",
+    "EvaluationCache",
     "Factor",
     "FactorConstraint",
     "FactorType",
