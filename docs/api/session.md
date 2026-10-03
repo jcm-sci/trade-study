@@ -32,6 +32,36 @@ Duplicate `tell` or `fail` reports and transitions from terminal states are
 rejected. Retrying an external evaluation may repeat its side effects; the
 caller must make those operations safe to repeat.
 
+Use `session.enqueue(config)` to evaluate a known complete configuration before
+sampling new ones. Every call queues a distinct evaluation. Queued configurations
+are visible through `trials("waiting")`; `ask()` supplies their evaluation ids.
+Continuous bounds, log factors and categorical/discrete levels are validated.
+
+To import completed observations, give both sessions the same explicit
+`revision="simulator-v2-scorer-v1-data-v3-fidelity-high"` and matching factor,
+objective (including weights/directions) and constraint definitions:
+
+```python
+new_session.warm_start(previous_session)
+# Saved tables from previous_session.results() also retain the import schema:
+new_session.warm_start(load_results("previous-results"))
+```
+
+Imports preserve raw means, standard errors, replicate counts and evaluation
+provenance. They create completed trials without calling a simulator. Repeating
+an import skips known evaluation identities, including after reopening and
+through intermediate sessions; conflicting results for an existing identity
+are refused. All rows are validated before any are imported. Serialize imports
+into a destination session. A bare grid table lacks a verifiable session schema
+and cannot be imported automatically. The revision is the caller's assertion of
+matching simulator, scorer, data, randomness and fidelity, not evidence inferred
+from the scores.
+
+Journals now store a versioned schema and refuse incompatible definitions on
+reopen. Nonempty legacy journals without that identity are also refused: use a
+new journal or study name. Legacy observations require reconstruction and
+validation against their original definitions; they are not silently adopted.
+
 ::: trade_study.AdaptiveSession
 
 ::: trade_study.SessionTrial
