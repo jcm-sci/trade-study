@@ -213,3 +213,46 @@ def test_retry_bounds_and_invalid_transitions() -> None:
     snapshot.metadata["failure_reason"] = "changed"
     assert session.trials()[0].config == config
     assert session.trials()[0].metadata["failure_reason"] == "simulator error"
+
+
+@pytest.mark.parametrize("op", ["<", ">", "<=", ">="])
+def test_constraint_boundaries_match_stored_sampler_feasibility(
+    tmp_path: Path, op: str
+) -> None:
+    threshold = 0.5
+    values = [
+        np.nextafter(threshold, -np.inf),
+        threshold,
+        np.nextafter(threshold, np.inf),
+    ]
+    constraint = Constraint("boundary", "cost", op, threshold)
+    path = tmp_path / "boundaries.journal"
+    factors = [Factor("x", FactorType.CONTINUOUS, bounds=(0, 1))]
+    observables = [Observable("cost", Direction.MINIMIZE)]
+    session = AdaptiveSession(
+        factors,
+        observables,
+        constraints=[constraint],
+        path=path,
+        revision="v1",
+    )
+    for value in values:
+        session.enqueue({"x": float(value)})
+        ((trial_id, _config),) = session.ask()
+        session.tell(trial_id, {"cost": float(value)})
+    results = session.results()
+    expected = results.feasible([constraint]).tolist()
+    stored = optuna.load_study(
+        study_name="trade-study-adaptive",
+        storage=optuna.storages.JournalStorage(
+            optuna.storages.journal.JournalFileBackend(str(path))
+        ),
+    )
+    assert [t.system_attrs["constraints"][0] <= 0 for t in stored.trials] == expected
+    assert [m["constraints"][0] <= 0 for m in results.metadata] == expected
+    assert expected[1] is (op in {"<=", ">="})
+    imported = AdaptiveSession(
+        factors, observables, constraints=[constraint], revision="v1"
+    )
+    imported.warm_start(results)
+    assert [m["constraints"][0] <= 0 for m in imported.results().metadata] == expected

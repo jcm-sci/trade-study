@@ -48,13 +48,23 @@ def _constraint_value(constraint: Constraint, value: float) -> float:
         ValueError: If the operator has no continuous violation measure.
     """
     if constraint.op in {"<=", "<"}:
-        return value - constraint.threshold
+        return _open_violation(
+            value - constraint.threshold, strict=constraint.op == "<"
+        )
     if constraint.op in {">=", ">"}:
-        return constraint.threshold - value
+        return _open_violation(
+            constraint.threshold - value, strict=constraint.op == ">"
+        )
     if constraint.op == "==":
         return abs(value - constraint.threshold)
     msg = f"Constraint operator {constraint.op!r} is not supported in adaptive search"
     raise ValueError(msg)
+
+
+def _open_violation(violation: float, *, strict: bool) -> float:
+    if strict and violation == 0:
+        return float(np.nextafter(0.0, np.inf))
+    return violation
 
 
 def _summarize(values: float | Sequence[float]) -> tuple[float, float, int]:
