@@ -239,6 +239,8 @@ existing results table through a validated surrogate.
 
 ## Development
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, code standards, and the PR workflow.
+
 ```bash
 uv sync --extra dev
 just ci          # lint → mypy --strict → pytest with coverage
