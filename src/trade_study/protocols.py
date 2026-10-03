@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     import numpy as np
+    import pandas as pd  # type: ignore[import-untyped]
     from numpy.typing import NDArray
 
 
@@ -287,6 +288,59 @@ class ResultsTable:
     annotations: NDArray[np.floating[Any]] | None = None  # (n_trials, n_annotations)
     annotation_names: list[str] = field(default_factory=list)
     metadata: list[dict[str, Any]] = field(default_factory=list)
+
+    def to_dataframe(self, *, include_metadata: bool = True) -> pd.DataFrame:
+        """Export one row per trial to a pandas DataFrame.
+
+        Factor columns appear in config insertion order, followed by
+        observables and annotations. Missing config keys become missing
+        values; categorical values retain their original values. Metadata
+        is flattened under ``meta.`` (for example ``meta.rep`` and
+        ``meta.standard_error.loss``), retaining raw adaptive means and
+        replicate uncertainty. This method does not aggregate replicates.
+
+        Args:
+            include_metadata: Include trial metadata, default True.
+
+        Returns:
+            A new DataFrame independent of the score and annotation arrays.
+
+        Raises:
+            ImportError: If pandas is unavailable; install the dataframe extra.
+            ValueError: If column names collide or metadata row counts differ.
+        """
+        try:
+            import pandas as pd
+        except ImportError as error:
+            msg = "DataFrame export requires pandas; install trade-study[dataframe]"
+            raise ImportError(msg) from error
+
+        index = pd.RangeIndex(len(self.configs))
+        frames = [
+            pd.DataFrame(self.configs, index=index),
+            pd.DataFrame(
+                self.scores.copy(), index=index, columns=self.observable_names
+            ),
+        ]
+        if self.annotations is not None:
+            frames.append(
+                pd.DataFrame(
+                    self.annotations.copy(), index=index, columns=self.annotation_names
+                )
+            )
+        if include_metadata and self.metadata:
+            if len(self.metadata) != len(self.configs):
+                msg = "metadata must have one entry per trial"
+                raise ValueError(msg)
+            frames.append(pd.json_normalize(self.metadata).add_prefix("meta."))
+        columns = [column for frame in frames for column in frame.columns]
+        if len(columns) != len(set(columns)):
+            msg = (
+                "DataFrame column names collide; rename conflicting factors, "
+                "observables or annotations"
+            )
+            raise ValueError(msg)
+        return pd.concat(frames, axis=1)
 
     def feasible(self, constraints: list[Constraint]) -> NDArray[np.bool_]:
         """Return a boolean mask indicating which rows satisfy all constraints.
