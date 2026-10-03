@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- An executed IVAC-oriented Jupyter notebook compares synthetic serosurvey designs across cost, overall accuracy and underserved-group accuracy, with live budget/preference changes, a 15-minute presenter route and documentation figures. Install notebook tools with the `notebook` extra.
 - Adaptive trial inspection, explicit failure reporting, and bounded retries with persistent failure reasons and retry lineage (#151).
 - Incremental grid checkpoints preserve completed design-point/replicate evaluations across interruptions, including parallel workers and incomplete `Study` phases. `run_grid(max_retries=...)` provides opt-in bounded retries (#151).
 - Grouped surrogate validation holds out whole designs or regimes alongside separate row-validation metrics. Prediction and recommendation expose observed-support diagnostics and warn on extrapolation for GP and RF (#152).

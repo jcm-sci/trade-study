@@ -99,6 +99,12 @@ front = study.front("benchmark")  # non-dominated config indices
 study.compare_phases()  # per-phase hypervolume and IGD+ between successive fronts
 ```
 
+For a complete 15-minute demonstration with live code and saved figures, see
+the [serosurvey design notebook](examples/serosurvey_study.ipynb) and
+[presentation guide](https://jcm-sci.github.io/trade-study/guide/serosurvey/).
+From a repository checkout, launch it with
+`uv run --extra notebook jupyter lab examples/serosurvey_study.ipynb`.
+
 ### Protocols
 
 Users implement two protocols to plug in their domain:
@@ -147,6 +153,7 @@ pip install trade-study[design,pareto]
 | `surrogate` | scikit-learn | GP/RF score and regime surrogates |
 | `dataframe` | pandas | ResultsTable export for analysis and CSV |
 | `all`      | All of the above                                                                                               |                                             |
+| `notebook` | JupyterLab, nbconvert, matplotlib, pandas, pymoo | Execute and present example notebooks |
 
 **Core dependency**: numpy only.
 

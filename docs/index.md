@@ -7,6 +7,9 @@ sensitivity analysis, and model stacking.
 For installation and quick-start examples, see the
 [README](https://github.com/jcm-sci/trade-study#readme).
 
+For a short presentation with live code, tables and saved figures, see the
+[serosurvey design notebook](guide/serosurvey.md), designed for a mixed IVAC audience.
+
 ## Overview
 
 `trade-study` provides a structured workflow for multi-objective

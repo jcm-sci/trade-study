@@ -22,9 +22,13 @@ jobs:
       - name: Sync environment
         run: uv sync --extra dev
       - name: Format check
-        run: uv run ruff format --preview --check src tests
+        run: >-
+          uv run ruff format --preview --check src tests
+          examples/serosurvey_study.py examples/serosurvey_study.ipynb
       - name: Lint
-        run: uv run ruff check --preview src tests
+        run: >-
+          uv run ruff check --preview src tests
+          examples/serosurvey_study.py examples/serosurvey_study.ipynb
       - name: Type check (strict)
         run: uv run mypy --strict src
 
@@ -54,13 +58,18 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "**/pyproject.toml"
       - name: Sync environment
-        run: uv sync --extra examples
+        run: uv sync --extra examples --extra notebook
       - name: Run CSTR example
         run: uv run python examples/cstr_study.py
       - name: Run sklearn example
         run: uv run python examples/sklearn_study.py
       - name: Run assay cost annotation example
         run: uv run python examples/assay_study.py
+      - name: Execute serosurvey demo notebook
+        run: >-
+          uv run --extra notebook jupyter nbconvert --execute --to notebook
+          --ExecutePreprocessor.timeout=60 --output serosurvey_executed.ipynb
+          --output-dir /tmp examples/serosurvey_study.ipynb
 
   ci:
     name: ci
