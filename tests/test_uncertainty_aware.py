@@ -144,3 +144,58 @@ def test_session_constraints_use_the_confidence_bound() -> None:
     error = meta["standard_error"]["cost"]
     expected = 0.475 + 1.6448536269514722 * error - 0.5
     assert meta["constraints"] == pytest.approx([expected])
+
+
+@pytest.mark.parametrize("op", ["<=", ">="])
+@pytest.mark.parametrize("values", [0.4, [0.4, np.nan], [np.nan], [np.inf]])
+def test_confident_session_rejects_unknown_uncertainty_and_allows_correction(
+    op: str, values: float | list[float]
+) -> None:
+    session = AdaptiveSession(
+        FACTORS,
+        [Observable("cost", Direction.MINIMIZE)],
+        constraints=[Constraint("cap", "cost", op, 0.5, confidence=0.95)],
+    )
+    ((trial_id, _config),) = session.ask(1)
+    with pytest.raises(ValueError, match="finite"):
+        session.tell(trial_id, {"cost": values})
+    assert session.results().configs == []
+    session.tell(trial_id, {"cost": [0.4, 0.45]})
+    assert len(session.results().configs) == 1
+
+
+@pytest.mark.parametrize("op", ["<=", ">="])
+def test_session_requires_non_objective_constraint_score(op: str) -> None:
+    session = AdaptiveSession(
+        FACTORS,
+        [Observable("loss", Direction.MINIMIZE)],
+        constraints=[Constraint("cap", "cost", op, 0.5)],
+    )
+    ((trial_id, _config),) = session.ask(1)
+    with pytest.raises(ValueError, match="Missing constraint score"):
+        session.tell(trial_id, {"loss": 0.1})
+    session.tell(trial_id, {"loss": 0.1, "cost": 0.4})
+    assert session.results().metadata[0]["scores"]["cost"] == pytest.approx(0.4)
+
+
+@pytest.mark.parametrize("error", [np.nan, np.inf, -0.1])
+def test_table_rejects_invalid_confidence_standard_error(error: float) -> None:
+    table = ResultsTable(
+        configs=[{"x": 0}],
+        scores=np.array([[0.4]]),
+        observable_names=["cost"],
+        metadata=[{"standard_error": {"cost": error}}],
+    )
+    with pytest.raises(ValueError, match="standard error"):
+        table.feasible([Constraint("cap", "cost", "<=", 0.5, confidence=0.95)])
+
+
+def test_confident_constraint_accepts_zero_variance_with_replicates() -> None:
+    session = AdaptiveSession(
+        FACTORS,
+        [Observable("cost", Direction.MINIMIZE)],
+        constraints=[Constraint("cap", "cost", "<=", 0.5, confidence=0.95)],
+    )
+    ((trial_id, _config),) = session.ask(1)
+    session.tell(trial_id, {"cost": [0.4, 0.4]})
+    assert session.results().metadata[0]["constraints"] == pytest.approx([-0.1])

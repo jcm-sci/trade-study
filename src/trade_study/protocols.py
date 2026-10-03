@@ -6,6 +6,7 @@ import itertools
 import operator as _operator
 from dataclasses import dataclass, field
 from enum import Enum
+from math import isfinite
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
@@ -107,11 +108,22 @@ class Constraint:
         Returns:
             ``mean`` without ``confidence``; otherwise the one-sided bound
             on the unfavourable side of ``threshold``.
+
+        Raises:
+            ValueError: If a confidence bound has a non-finite mean or a
+                non-finite or negative standard error.
         """
         if self.confidence is None:
             return mean
         from statistics import NormalDist
 
+        if not isfinite(mean) or not isfinite(standard_error) or standard_error < 0:
+            msg = (
+                f"Constraint {self.name!r}: confidence bound needs a finite mean "
+                "and a finite non-negative standard error; report at least "
+                "two finite replicates"
+            )
+            raise ValueError(msg)
         z = NormalDist().inv_cdf(self.confidence)
         return (
             mean + z * standard_error

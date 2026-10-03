@@ -132,9 +132,15 @@ class AdaptiveSession:
         errors = trial.user_attrs.get("standard_error", {})
         values = []
         for c in self.constraints:
-            mean = float(scores.get(c.observable, np.inf))
+            mean = float(scores.get(c.observable, np.nan))
             error = float(errors.get(c.observable, np.nan))
-            bound = c.bound(mean, error if np.isfinite(error) else 0.0)
+            unknown = not np.isfinite(mean) or (
+                c.confidence is not None and (not np.isfinite(error) or error < 0)
+            )
+            if unknown:
+                values.append(float("inf"))
+                continue
+            bound = c.bound(mean, error)
             values.append(_constraint_value(c, bound))
         return values
 
@@ -180,7 +186,9 @@ class AdaptiveSession:
 
         Raises:
             ValueError: If the trial id is unknown, already told, or an
-                objective is missing.
+                objective or constraint score is missing, or a constraint
+                has no finite mean/required standard error. Rejected tells
+                leave the trial pending and may be corrected.
         """
         import optuna as _optuna
 
@@ -199,6 +207,15 @@ class AdaptiveSession:
             msg = f"Missing objective scores: {missing}"
             raise ValueError(msg)
         summary = {name: _summarize(values) for name, values in scores.items()}
+        for constraint in self.constraints:
+            if constraint.observable not in summary:
+                msg = f"Missing constraint score: {constraint.observable!r}"
+                raise ValueError(msg)
+            mean, standard_error, _count = summary[constraint.observable]
+            if not np.isfinite(mean):
+                msg = f"Constraint {constraint.name!r} needs a finite reported mean"
+                raise ValueError(msg)
+            constraint.bound(mean, standard_error)
         self._storage.set_trial_user_attr(
             internal, "scores", {k: v[0] for k, v in summary.items()}
         )
