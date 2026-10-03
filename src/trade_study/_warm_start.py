@@ -179,7 +179,7 @@ def _fingerprint(trial: optuna.trial.FrozenTrial) -> str:
     return json.dumps(
         {
             "params": trial.params,
-            "values": trial.values,
+            "values": trial.values or trial.user_attrs.get("_import_values"),
             "summary": {
                 k: trial.user_attrs.get(k)
                 for k in ("scores", "n_reps", "standard_error")

@@ -196,3 +196,86 @@ def test_reopening_validates_schema_and_refuses_legacy_storage(tmp_path: Path) -
         _destination(legacy_path)
     with pytest.raises(ValueError, match="nonempty"):
         AdaptiveSession(_FACTORS, _OBS, revision=" ")
+
+
+def _loaded(path: Path) -> optuna.Study:
+    return optuna.load_study(
+        study_name="trade-study-adaptive",
+        storage=optuna.storages.JournalStorage(
+            optuna.storages.journal.JournalFileBackend(str(path))
+        ),
+    )
+
+
+@pytest.mark.parametrize("mode", ["queued", "retried", "imported"])
+def test_known_parameters_join_the_constrained_population(
+    tmp_path: Path, mode: str
+) -> None:
+    path = tmp_path / "population.journal"
+    session = _destination(path)
+    if mode == "imported":
+        expected = session.warm_start(_source())[0]
+    else:
+        session.enqueue(_CONFIG)
+        ((expected, _config),) = session.ask()
+        if mode == "retried":
+            session.fail(expected, "worker failed")
+            expected, _config = session.retry(expected)
+        session.tell(expected, {"loss": [1, 2], "reward": [2, 4], "aux": [1, 3]})
+    stored = _loaded(path)
+    population = optuna.samplers.NSGAIISampler().get_population(stored, 0)
+    assert [t.number for t in population] == [expected]
+    assert population[0].system_attrs["constraints"] == pytest.approx([-3])
+
+
+def test_imported_population_can_supply_the_next_generation(tmp_path: Path) -> None:
+    source = _destination()
+    for _ in range(50):
+        source.enqueue(_CONFIG)
+        ((trial_id, _config),) = source.ask()
+        source.tell(trial_id, {"loss": [1, 2], "reward": [2, 4], "aux": [1, 3]})
+    path = tmp_path / "parents.journal"
+    destination = _destination(path)
+    destination.warm_start(source)
+    stored = _loaded(path)
+    sampler = optuna.samplers.NSGAIISampler(
+        constraints_func=lambda trial: trial.system_attrs["constraints"],
+    )
+    assert len(sampler.get_population(stored, 0)) == 50
+    assert len(sampler.get_parent_population(stored, 1)) == 50
+    assert all(
+        t.system_attrs["constraints"] == pytest.approx([-3]) for t in stored.trials
+    )
+
+
+def test_interrupted_import_resumes_without_duplicate_trials(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    table = _source().results()
+    path = tmp_path / "interrupted.journal"
+    destination = _destination(path)
+
+    def interrupt(
+        sampler: optuna.samplers.NSGAIISampler,
+        study: optuna.Study,
+        trial: optuna.trial.FrozenTrial,
+    ) -> int:
+        del sampler, study, trial
+        raise KeyboardInterrupt
+
+    with monkeypatch.context() as patch:
+        patch.setattr(optuna.samplers.NSGAIISampler, "get_trial_generation", interrupt)
+        with pytest.raises(KeyboardInterrupt):
+            destination.warm_start(table)
+    reopened = _destination(path)
+    assert len(reopened.trials("pending")) == 1
+    duplicated_input = ResultsTable(
+        table.configs * 2,
+        np.vstack([table.scores, table.scores]),
+        table.observable_names,
+        metadata=table.metadata * 2,
+    )
+    assert reopened.warm_start(duplicated_input) == [0]
+    assert len(reopened.trials()) == 1
+    assert len(reopened.trials("complete")) == 1
+    assert reopened.warm_start(table) == []

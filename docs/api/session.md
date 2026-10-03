@@ -36,6 +36,9 @@ Use `session.enqueue(config)` to evaluate a known complete configuration before
 sampling new ones. Every call queues a distinct evaluation. Queued configurations
 are visible through `trials("waiting")`; `ask()` supplies their evaluation ids.
 Continuous bounds, log factors and categorical/discrete levels are validated.
+Queued, retried and imported trials join the sampler population when completed;
+constraints are processed through the same tell lifecycle as sampled trials.
+The adaptive extra requires Optuna 4.5 or newer for public generation assignment.
 
 To import completed observations, give both sessions the same explicit
 `revision="simulator-v2-scorer-v1-data-v3-fidelity-high"` and matching factor,
@@ -51,7 +54,9 @@ Imports preserve raw means, standard errors, replicate counts and evaluation
 provenance. They create completed trials without calling a simulator. Repeating
 an import skips known evaluation identities, including after reopening and
 through intermediate sessions; conflicting results for an existing identity
-are refused. All rows are validated before any are imported. Serialize imports
+are refused. All rows are validated before any are imported. Interrupted imports
+resume their pending completion on the next identical import without adding
+another trial. Serialize imports
 into a destination session. A bare grid table lacks a verifiable session schema
 and cannot be imported automatically. The revision is the caller's assertion of
 matching simulator, scorer, data, randomness and fidelity, not evidence inferred

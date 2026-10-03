@@ -68,7 +68,7 @@ design = [
   "scipy>=1.10",
 ]
 adaptive = [
-  "optuna>=4.0",
+  "optuna>=4.5",
 ]
 parallel = [
   "joblib>=1.3",
