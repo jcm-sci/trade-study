@@ -7,6 +7,7 @@ from ._pareto import extract_front, hypervolume, igd_plus, pareto_rank
 from ._scoring import coverage_curve, score
 from ._version import __version__
 from .cache import EvaluationCache
+from .decision import PreferencePolicy, PreferenceSweep, preference_sweep
 from .design import (
     Factor,
     FactorConstraint,
@@ -67,6 +68,8 @@ __all__ = [
     "PartialEvaluator",
     "Phase",
     "PredictionSupport",
+    "PreferencePolicy",
+    "PreferenceSweep",
     "RegimeSurrogate",
     "ReplicationPolicy",
     "ResultsTable",
@@ -97,6 +100,7 @@ __all__ = [
     "plot_front",
     "plot_parallel",
     "plot_scores",
+    "preference_sweep",
     "recommend_bucketed_config",
     "recommend_per_regime",
     "reduce_factors",

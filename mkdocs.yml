@@ -72,6 +72,7 @@ nav:
       - Runner: api/runner.md
       - Adaptive Sessions: api/session.md
       - Paired Comparisons: api/paired.md
+      - Decision Summaries: api/decision.md
       - Post-hoc Sensitivity: api/sensitivity.md
       - Study: api/study.md
       - Scoring: api/scoring.md
