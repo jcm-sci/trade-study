@@ -143,6 +143,7 @@ pip install trade-study[design,pareto]
 | `stacking` | [arviz](https://github.com/arviz-devs/arviz), scipy                                                            | Bayesian and score-based ensemble weights   |
 | `adaptive` | [optuna](https://optuna.org/)                                                                                  | Adaptive multi-objective search (NSGA-II)   |
 | `parallel` | joblib                                                                                                         | Parallel grid execution                     |
+| `dataframe` | pandas | ResultsTable export for analysis and CSV |
 | `all`      | All of the above                                                                                               |                                             |
 
 **Core dependency**: numpy only.
@@ -203,6 +204,8 @@ from trade_study import save_results, load_results
 
 save_results(results, "study_results")
 results = load_results("study_results")
+frame = results.to_dataframe()  # optional pandas extra; includes trial metadata
+frame.to_csv("study_results.csv", index=False)
 ```
 
 ### Multi-fidelity search and surrogates
