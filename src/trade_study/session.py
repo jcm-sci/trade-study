@@ -19,6 +19,7 @@ sampler so infeasible regions are learned.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -66,6 +67,16 @@ def _summarize(values: float | Sequence[float]) -> tuple[float, float, int]:
         else float("nan")
     )
     return float(finite.mean()), error, int(finite.size)
+
+
+@dataclass(frozen=True)
+class SessionTrial:
+    """Snapshot of an adaptive trial, including failure and retry metadata."""
+
+    trial_id: int
+    config: dict[str, Any]
+    state: str
+    metadata: dict[str, Any]
 
 
 class AdaptiveSession:
@@ -192,13 +203,7 @@ class AdaptiveSession:
         """
         import optuna as _optuna
 
-        try:
-            internal = self._storage.get_trial_id_from_study_id_trial_number(
-                self._study_id, trial_id
-            )
-        except KeyError as error:
-            msg = f"Unknown trial id {trial_id}"
-            raise ValueError(msg) from error
+        internal = self._trial_id(trial_id)
         if self._storage.get_trial(internal).state != _optuna.trial.TrialState.RUNNING:
             msg = f"Trial {trial_id} was already told"
             raise ValueError(msg)
@@ -229,6 +234,118 @@ class AdaptiveSession:
             trial_id, [summary[o.name][0] * o.weight for o in self.observables]
         )
 
+    def _trial_id(self, trial_id: int) -> int:
+        try:
+            return self._storage.get_trial_id_from_study_id_trial_number(
+                self._study_id, trial_id
+            )
+        except KeyError as error:
+            msg = f"Unknown trial id {trial_id}"
+            raise ValueError(msg) from error
+
+    def trials(self, state: str | None = None) -> list[SessionTrial]:
+        """Inspect trials in creation order without exposing storage internals.
+
+        Args:
+            state: Optional filter: ``pending``, ``complete``, ``failed``,
+                ``waiting``, or ``pruned``. Pending trials are running trials
+                whose external evaluations have not been reported.
+
+        Returns:
+            Independent snapshots, including raw scores, failure reasons,
+            and retry lineage in metadata where available.
+
+        Raises:
+            ValueError: If the state filter is unknown.
+        """
+        states = {
+            "RUNNING": "pending",
+            "COMPLETE": "complete",
+            "FAIL": "failed",
+            "WAITING": "waiting",
+            "PRUNED": "pruned",
+        }
+        if state is not None and state not in states.values():
+            msg = f"Unknown trial state {state!r}"
+            raise ValueError(msg)
+        return [
+            SessionTrial(t.number, dict(t.params), states[t.state.name], t.user_attrs)
+            for t in self._study.get_trials(deepcopy=True)
+            if state is None or states[t.state.name] == state
+        ]
+
+    def fail(self, trial_id: int, reason: str) -> None:
+        """Mark a pending trial failed, preserving its configuration.
+
+        Args:
+            trial_id: Id returned by :meth:`ask` or :meth:`retry`.
+            reason: Nonempty description of the evaluation failure.
+
+        Raises:
+            ValueError: If the id is unknown, the trial is not pending, or
+                the reason is empty. Duplicate failure reports are rejected.
+        """
+        import optuna as _optuna
+
+        if not reason.strip():
+            msg = "A failure reason must be nonempty"
+            raise ValueError(msg)
+        internal = self._trial_id(trial_id)
+        if self._storage.get_trial(internal).state != _optuna.trial.TrialState.RUNNING:
+            msg = f"Trial {trial_id} is not pending"
+            raise ValueError(msg)
+        self._storage.set_trial_user_attr(internal, "failure_reason", reason)
+        self._study.tell(trial_id, state=_optuna.trial.TrialState.FAIL)
+
+    def retry(
+        self, trial_id: int, *, max_retries: int = 1
+    ) -> tuple[int, dict[str, Any]]:
+        """Create a bounded retry of a failed trial with identical parameters.
+
+        Args:
+            trial_id: Failed trial to retry. To retry another failed attempt,
+                pass that attempt's id.
+            max_retries: Maximum additional attempts across the retry chain.
+
+        Returns:
+            New trial id and the original configuration. Repeating a request
+            for the same failed id returns its existing child, including
+            after reopening; it never creates a second child.
+
+        Raises:
+            ValueError: If the id is unknown, not failed, or its retry limit
+                has been reached, or the limit is less than one.
+
+        Notes:
+            Serialize retry requests for a given id. Idempotency applies to
+            repeated requests, not simultaneous requests from multiple writers.
+        """
+        import optuna as _optuna
+
+        if max_retries < 1:
+            msg = "max_retries must be >= 1"
+            raise ValueError(msg)
+        source = self._storage.get_trial(self._trial_id(trial_id))
+        if source.state != _optuna.trial.TrialState.FAIL:
+            msg = f"Trial {trial_id} is not failed"
+            raise ValueError(msg)
+        for trial in self._study.get_trials():
+            if trial.user_attrs.get("retry_of") == trial_id:
+                return trial.number, dict(trial.params)
+        attempt = int(source.user_attrs.get("retry_attempt", 0)) + 1
+        if attempt > max_retries:
+            msg = f"Trial {trial_id} reached its retry limit ({max_retries})"
+            raise ValueError(msg)
+        template = _optuna.trial.create_trial(
+            state=_optuna.trial.TrialState.RUNNING,
+            params=source.params,
+            distributions=source.distributions,
+            user_attrs={"retry_of": trial_id, "retry_attempt": attempt},
+        )
+        internal = self._storage.create_new_trial(self._study_id, template)
+        child = self._storage.get_trial(internal)
+        return child.number, dict(child.params)
+
     def results(self) -> ResultsTable:
         """Return completed trials.
 
@@ -255,6 +372,11 @@ class AdaptiveSession:
                     "standard_error": t.user_attrs.get("standard_error", {}),
                     "n_reps": t.user_attrs.get("n_reps", {}),
                     "constraints": self._constraint_values(t),
+                    **{
+                        k: t.user_attrs[k]
+                        for k in ("retry_of", "retry_attempt")
+                        if k in t.user_attrs
+                    },
                 }
                 for t in done
             ],

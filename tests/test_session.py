@@ -151,3 +151,65 @@ def test_inequality_constraints_are_rejected() -> None:
         AdaptiveSession(
             FACTORS, OBSERVABLES, constraints=[Constraint("odd", "cost", "!=", 0.0)]
         )
+
+
+def test_failure_and_retry_survive_reopening(tmp_path: Path) -> None:
+    path = tmp_path / "recovery.journal"
+    first = AdaptiveSession(FACTORS, OBSERVABLES, path=path)
+    ((original, config),) = first.ask()
+    first.fail(original, "worker interrupted")
+
+    reopened = AdaptiveSession(FACTORS, OBSERVABLES, path=path)
+    failed = reopened.trials("failed")
+    assert failed[0].config == config
+    assert failed[0].metadata["failure_reason"] == "worker interrupted"
+    retry_id, retry_config = reopened.retry(original)
+    assert retry_id != original
+    assert retry_config == config
+    pending = reopened.trials("pending")
+    assert pending[0].trial_id == retry_id
+    assert pending[0].metadata == {"retry_of": original, "retry_attempt": 1}
+
+    last = AdaptiveSession(FACTORS, OBSERVABLES, path=path)
+    assert last.retry(original) == (retry_id, config)
+    last.tell(retry_id, _score(config))
+    assert last.results().configs == [config]
+    assert last.results().metadata[0]["retry_of"] == original
+    assert last.trials("complete")[0].trial_id == retry_id
+    assert last.retry(original) == (retry_id, config)
+
+
+def test_retry_bounds_and_invalid_transitions() -> None:
+    session = AdaptiveSession(FACTORS, OBSERVABLES)
+    ((trial_id, config),) = session.ask()
+    with pytest.raises(ValueError, match="not failed"):
+        session.retry(trial_id)
+    with pytest.raises(ValueError, match="nonempty"):
+        session.fail(trial_id, "  ")
+    with pytest.raises(ValueError, match="Unknown trial"):
+        session.fail(99, "lost")
+    with pytest.raises(ValueError, match="Unknown trial"):
+        session.retry(99)
+    with pytest.raises(ValueError, match="Unknown trial state"):
+        session.trials("invalid")
+    session.fail(trial_id, "simulator error")
+    with pytest.raises(ValueError, match="not pending"):
+        session.fail(trial_id, "duplicate")
+    with pytest.raises(ValueError, match="already told"):
+        session.tell(trial_id, _score(config))
+    with pytest.raises(ValueError, match="max_retries"):
+        session.retry(trial_id, max_retries=0)
+    retry_id, _ = session.retry(trial_id)
+    session.fail(retry_id, "scorer error")
+    with pytest.raises(ValueError, match="retry limit"):
+        session.retry(retry_id)
+    second, _ = session.retry(retry_id, max_retries=2)
+    session.tell(second, _score(config))
+    with pytest.raises(ValueError, match="not pending"):
+        session.fail(second, "too late")
+    assert [t.state for t in session.trials()] == ["failed", "failed", "complete"]
+    snapshot = session.trials()[0]
+    snapshot.config["mode"] = "changed"
+    snapshot.metadata["failure_reason"] = "changed"
+    assert session.trials()[0].config == config
+    assert session.trials()[0].metadata["failure_reason"] == "simulator error"

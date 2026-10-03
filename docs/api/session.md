@@ -12,4 +12,26 @@ non-objective constraint scores. A rejected tell leaves its trial pending so it
 can be corrected. Result score columns retain weighted objective means; raw
 means and uncertainty remain in metadata, and feasibility checks use raw units.
 
+Inspect `session.trials()` or filter with `trials("pending")`,
+`trials("complete")`, and `trials("failed")`. Snapshots include configuration,
+trial id, state, and metadata. Record evaluation failures explicitly:
+
+```python
+session.fail(trial_id, "worker timed out")
+retry_id, config = session.retry(trial_id, max_retries=2)
+# Evaluate config again and report against retry_id, not trial_id.
+session.tell(retry_id, scores)
+```
+
+Retries create new trial ids with the same parameters and retain the failed
+attempt. The bound applies across a chain: to retry a failed retry, pass its id.
+No retry happens automatically. Calling `retry` again on the same failed id
+returns its existing child, even after reopening or completion. Serialize retry
+requests for a given id; simultaneous writers may create duplicate children.
+Duplicate `tell` or `fail` reports and transitions from terminal states are
+rejected. Retrying an external evaluation may repeat its side effects; the
+caller must make those operations safe to repeat.
+
 ::: trade_study.AdaptiveSession
+
+::: trade_study.SessionTrial

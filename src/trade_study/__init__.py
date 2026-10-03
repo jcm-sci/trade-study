@@ -39,7 +39,7 @@ from .regime import (
 )
 from .runner import run_adaptive, run_grid, run_hyperband, run_successive_halving
 from .sensitivity import TableSensitivity, sensitivity_from_table
-from .session import AdaptiveSession
+from .session import AdaptiveSession, SessionTrial
 from .stacking import ensemble_predict, stack_bayesian, stack_proportional, stack_scores
 from .study import (
     Phase,
@@ -66,6 +66,7 @@ __all__ = [
     "RegimeSurrogate",
     "ResultsTable",
     "Scorer",
+    "SessionTrial",
     "Simulator",
     "Study",
     "SurrogateModel",
