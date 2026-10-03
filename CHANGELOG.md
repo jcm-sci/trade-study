@@ -23,6 +23,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Confidence constraints now reject non-finite means and unknown/invalid standard errors instead of treating missing uncertainty as zero. Adaptive tells require constraint scores and validate them before updating storage; rejected tells can be corrected (#141).
+
+- `stack_proportional()` now uses direction-aware exponential utilities with an explicit score-unit `temperature`, preserving shared weight for near-tied losses as well as rewards; validates input and handles signed/extreme scores (#140).
+
 - Strict mypy failed on `run_adaptive`'s optuna `directions` argument with current optuna stubs; directions are now typed as `Literal["minimize", "maximize"]`.
 - `reduce_factors()` no longer lets a NaN-valued observable (e.g. a Type-I rate that's legitimately undefined outside null regimes) silently corrupt every other observable's importance for the same factor. It aggregated via `np.maximum`, which propagates NaN (`np.maximum(4.05, nan) == nan`); one conditionally-undefined observable could erase a real, significant importance value found via a *different* observable, dropping the factor with no warning or error. Now uses NaN-safe `np.fmax`, and warns when a factor's importance is NaN across *every* observable (dropped for lack of data, not confirmed unimportance) (#119).
 

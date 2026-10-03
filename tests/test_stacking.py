@@ -266,3 +266,46 @@ def test_ensemble_weights_normalised() -> None:
     result = ensemble_predict([p1, p2], weights)
     expected = (p1 + p2) / 2.0
     np.testing.assert_allclose(result, expected)
+
+
+@pytest.mark.parametrize("maximize", [False, True])
+def test_proportional_two_model_near_tie(*, maximize: bool) -> None:
+    weights = stack_proportional(np.array([[1.0], [1.001]]), maximize=maximize)
+    np.testing.assert_allclose(weights, [0.5, 0.5], atol=0.001)
+    assert (weights[1] > weights[0]) == maximize
+
+
+def test_proportional_signed_scores_and_direction_reversal() -> None:
+    scores = np.array([[-3.0], [-2.0], [0.0]])
+    low = stack_proportional(scores)
+    high = stack_proportional(-scores, maximize=True)
+    np.testing.assert_allclose(low, high)
+    assert low[0] > low[1] > low[2] > 0
+    np.testing.assert_allclose(low, stack_proportional(scores + 100))
+
+
+def test_proportional_temperature_tracks_score_units() -> None:
+    scores = np.array([[0.0], [1.0]])
+    np.testing.assert_allclose(
+        stack_proportional(scores),
+        stack_proportional(scores * 100, temperature=100),
+    )
+    assert stack_proportional(scores, temperature=0.1)[0] > 0.99
+    assert stack_proportional(scores, temperature=100)[0] < 0.51
+
+
+def test_proportional_extreme_scores_are_finite() -> None:
+    scores = np.array([[1e308, 1e308], [-1e308, -1e308]])
+    np.testing.assert_array_equal(stack_proportional(scores), [0.0, 1.0])
+
+
+@pytest.mark.parametrize("temperature", [0.0, -1.0, np.nan, np.inf])
+def test_proportional_rejects_invalid_temperature(temperature: float) -> None:
+    with pytest.raises(ValueError, match="temperature"):
+        stack_proportional(np.array([[1.0]]), temperature=temperature)
+
+
+@pytest.mark.parametrize("scores", [[], [[]], [1.0], [[np.nan]], [[np.inf]]])
+def test_proportional_rejects_invalid_scores(scores: list) -> None:
+    with pytest.raises(ValueError, match="score_matrix"):
+        stack_proportional(np.asarray(scores))
