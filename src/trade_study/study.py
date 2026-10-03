@@ -53,10 +53,9 @@ class Phase:
             indices of configs to pass to the next phase. If None, phase
             is terminal.
         n_trials: For adaptive mode, number of optuna trials.
-        n_reps: For grid modes (explicit or callable grid), number of times
-            to evaluate each design point; forwarded to
-            :func:`~trade_study.runner.run_grid` (#112). Ignored in
-            adaptive mode.
+        n_reps: Number of times to evaluate each design point, forwarded to
+            grid and adaptive runners. Adaptive results already contain
+            per-trial means; grid results retain raw replicate rows.
         world: Optional phase-level simulator override.  When set, this
             phase uses *world* instead of the ``Study``-level simulator.
             Useful for multi-fidelity workflows (cheap surrogate first,
@@ -245,7 +244,7 @@ class Study:
                 result = load_results(saved)
                 self._results[phase.name] = result
                 prev_result = result
-                carry_grid = self._carry(phase, result)
+                carry_grid = self._carry(phase)
                 continue
 
             # Resolve phase-level overrides (multi-fidelity support)
@@ -259,6 +258,7 @@ class Study:
                     self.factors,
                     self.observables,
                     n_trials=phase.n_trials,
+                    n_reps=phase.n_reps,
                 )
             elif callable(phase.grid):
                 if prev_result is None:
@@ -296,9 +296,9 @@ class Study:
             prev_result = result
             if saved is not None:
                 save_results(result, saved)
-            carry_grid = self._carry(phase, result)
+            carry_grid = self._carry(phase)
 
-    def _carry(self, phase: Phase, result: ResultsTable) -> list[dict[str, Any]] | None:
+    def _carry(self, phase: Phase) -> list[dict[str, Any]] | None:
         """Return the configs a phase passes on, or ``None`` when terminal.
 
         Filters run on aggregated per-design-point scores when replicated
@@ -308,7 +308,7 @@ class Study:
         """
         if phase.filter_fn is None:
             return None
-        source = result.aggregate_replicates() if phase.n_reps > 1 else result
+        source = self._design_points(phase)
         keep = phase.filter_fn(source, self.observables)
         return [source.configs[i] for i in keep]
 
@@ -487,7 +487,9 @@ class Study:
 
     def _design_points(self, phase: Phase) -> ResultsTable:
         result = self._results[phase.name]
-        return result.aggregate_replicates() if phase.n_reps > 1 else result
+        if phase.n_reps > 1 and phase.grid != "adaptive":
+            return result.aggregate_replicates()
+        return result
 
     def stack(
         self,

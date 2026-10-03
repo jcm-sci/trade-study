@@ -205,7 +205,8 @@ def run_adaptive(
 
     Returns:
         ResultsTable with scored results, one row per optuna trial (each
-        row the mean of ``n_reps`` replicate draws).
+        row the weighted mean of ``n_reps`` replicate draws). Metadata
+        retains trial ids, raw means, standard errors and replicate counts.
 
     Raises:
         ValueError: If ``n_reps`` is less than 1.
@@ -238,12 +239,7 @@ def run_adaptive(
             },
         )
 
-    table = session.results()
-    return ResultsTable(
-        configs=table.configs,
-        scores=table.scores,
-        observable_names=table.observable_names,
-    )
+    return session.results()
 
 
 # ---------------------------------------------------------------------------

@@ -292,8 +292,10 @@ class ResultsTable:
         """Return a boolean mask indicating which rows satisfy all constraints.
 
         Each constraint references an observable or annotation column by
-        name.  A row is feasible only when **every** constraint evaluates
-        to ``True``.
+        name. Adaptive results retain weighted scores for compatibility;
+        their raw means in ``metadata["scores"]`` are used here so thresholds
+        and standard errors remain in the observable's original units.
+        A row is feasible only when **every** constraint evaluates to ``True``.
 
         Args:
             constraints: Constraint objects to evaluate.
@@ -315,6 +317,14 @@ class ResultsTable:
             if con.observable in self.observable_names:
                 col_idx = self.observable_names.index(con.observable)
                 values = self.scores[:, col_idx]
+                if self.metadata:
+                    values = np.asarray(
+                        [
+                            meta.get("scores", {}).get(con.observable, value)
+                            for meta, value in zip(self.metadata, values, strict=True)
+                        ],
+                        dtype=float,
+                    )
             elif (
                 con.observable in self.annotation_names and self.annotations is not None
             ):
