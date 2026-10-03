@@ -22,9 +22,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 import numpy as np
 
+from ._warm_start import _fingerprint, _import_trials, _session_schema, _validate_config
 from .design import FactorType
 from .protocols import Direction, ResultsTable
 
@@ -91,6 +93,7 @@ class AdaptiveSession:
         seed: int = 42,
         path: str | Path | None = None,
         study_name: str = _STUDY_NAME,
+        revision: str | None = None,
     ) -> None:
         """Create or reopen a session.
 
@@ -105,6 +108,12 @@ class AdaptiveSession:
             path: Journal file for a persistent session; in-memory when
                 ``None``.
             study_name: Name of the study inside the journal.
+            revision: Caller-managed simulator/scorer/data/fidelity revision.
+                Required for importing completed observations between searches.
+
+        Raises:
+            ValueError: If the revision is empty or a journal's stored schema
+                is incompatible or absent in an existing nonempty study.
         """
         import optuna as _optuna
         from optuna.storages.journal import JournalFileBackend
@@ -112,6 +121,11 @@ class AdaptiveSession:
         self.factors = factors
         self.observables = observables
         self.constraints = list(constraints or [])
+        if revision is not None and not revision.strip():
+            msg = "revision must be a nonempty model/data revision"
+            raise ValueError(msg)
+        self.revision = revision
+        self._schema = _session_schema(factors, observables, self.constraints, revision)
         for constraint in self.constraints:
             _constraint_value(constraint, 0.0)
         if path is None:
@@ -137,6 +151,14 @@ class AdaptiveSession:
             load_if_exists=True,
         )
         self._study_id = self._storage.get_study_id_from_name(study_name)
+        stored = self._study.user_attrs.get("trade_study_identity")
+        if stored is None and not self._study.get_trials():
+            stored = {"schema": self._schema, "session_id": str(uuid4())}
+            self._study.set_user_attr("trade_study_identity", stored)
+        elif not isinstance(stored, dict) or stored.get("schema") != self._schema:
+            msg = "Incompatible or legacy session schema; use a new journal/study name"
+            raise ValueError(msg)
+        self._session_id = str(stored["session_id"])
 
     def _constraint_values(self, trial: optuna.trial.FrozenTrial) -> list[float]:
         scores = trial.user_attrs.get("scores", {})
@@ -269,7 +291,12 @@ class AdaptiveSession:
             msg = f"Unknown trial state {state!r}"
             raise ValueError(msg)
         return [
-            SessionTrial(t.number, dict(t.params), states[t.state.name], t.user_attrs)
+            SessionTrial(
+                t.number,
+                dict(t.params or t.system_attrs.get("fixed_params", {})),
+                states[t.state.name],
+                t.user_attrs,
+            )
             for t in self._study.get_trials(deepcopy=True)
             if state is None or states[t.state.name] == state
         ]
@@ -346,6 +373,75 @@ class AdaptiveSession:
         child = self._storage.get_trial(internal)
         return child.number, dict(child.params)
 
+    def enqueue(self, config: dict[str, Any]) -> None:
+        """Queue a known configuration before sampling new configurations.
+
+        Args:
+            config: Complete factor configuration inside the declared domain.
+
+        Raises:
+            ValueError: If the configuration's factor names or values are invalid.
+
+        Notes:
+            Each call queues a distinct evaluation. Completed observations
+            should instead be imported with :meth:`warm_start`.
+        """
+        if set(config) != {f.name for f in self.factors}:
+            msg = "Configuration must contain every session factor exactly"
+            raise ValueError(msg)
+        self._study.enqueue_trial(_validate_config(config, self.factors))
+
+    def warm_start(self, source: AdaptiveSession | ResultsTable) -> list[int]:
+        """Import compatible completed evaluations, without re-evaluating them.
+
+        Args:
+            source: Session or saved/loaded table produced by session.results().
+                Factor/objective/constraint definitions and explicit revision
+                must match. Bare grid tables have no verifiable session schema.
+
+        Returns:
+            Newly imported trial ids. Repeated imports skip evaluations already
+            present, including after reopening and through intermediate imports.
+
+        Raises:
+            ValueError: If revision/schema/provenance/observations are invalid,
+                or an existing evaluation id has conflicting results.
+
+        Notes:
+            Serialize imports into a destination session. The revision is the
+            caller's assertion of matching model, scorer, data and fidelity;
+            the library cannot establish that assertion from scores alone.
+        """
+        if self.revision is None:
+            msg = "warm_start requires an explicit model/data revision"
+            raise ValueError(msg)
+        results = source.results() if isinstance(source, AdaptiveSession) else source
+        templates = _import_trials(
+            results, self.factors, self.observables, self.constraints, self._schema
+        )
+        existing = {
+            t.user_attrs.get(
+                "evaluation_id", f"{self._session_id}:{t.number}"
+            ): _fingerprint(t)
+            for t in self._study.get_trials()
+            if t.state.name == "COMPLETE"
+        }
+        pending = []
+        for trial in templates:
+            identity = trial.user_attrs["evaluation_id"]
+            fingerprint = _fingerprint(trial)
+            if identity in existing and existing[identity] != fingerprint:
+                msg = f"Conflicting imported evaluation {identity!r}"
+                raise ValueError(msg)
+            if identity not in existing:
+                pending.append(trial)
+                existing[identity] = fingerprint
+        imported = []
+        for trial in pending:
+            self._study.add_trial(trial)
+            imported.append(self._study.get_trials()[-1].number)
+        return imported
+
     def results(self) -> ResultsTable:
         """Return completed trials.
 
@@ -368,13 +464,18 @@ class AdaptiveSession:
             metadata=[
                 {
                     "trial": t.number,
+                    "session_id": self._session_id,
+                    "session_schema": self._schema,
+                    "evaluation_id": t.user_attrs.get(
+                        "evaluation_id", f"{self._session_id}:{t.number}"
+                    ),
                     "scores": t.user_attrs.get("scores", {}),
                     "standard_error": t.user_attrs.get("standard_error", {}),
                     "n_reps": t.user_attrs.get("n_reps", {}),
                     "constraints": self._constraint_values(t),
                     **{
                         k: t.user_attrs[k]
-                        for k in ("retry_of", "retry_attempt")
+                        for k in ("retry_of", "retry_attempt", "provenance")
                         if k in t.user_attrs
                     },
                 }
