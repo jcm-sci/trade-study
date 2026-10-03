@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 - Adaptive sessions queue known configurations and import compatible completed observations with persistent identity/provenance and duplicate protection. Versioned session schemas validate reopened journals and refuse unverifiable legacy storage (#154).
 - Opt-in `EvaluationCache` reuses grid evaluations by typed configuration, replicate namespace/id, model/scorer revision, fidelity, objective and annotation definitions; includes provenance, bypass, invalidation and conflicting-evidence checks (#154).
 - `preference_sweep()` reports ranking/selection stability, regret, feasible Pareto alternatives, raw-unit practical equivalence and optional paired uncertainty under explicit normalization and preference assumptions, with exportable per-design summaries (#155).
+- A synthetic assay-cost example and guide demonstrate categorical choices, external cost annotations, cost as a Pareto objective, and screening/refinement with replicated design means (#83).
 
 ### Fixed
 
