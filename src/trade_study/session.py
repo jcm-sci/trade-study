@@ -140,6 +140,7 @@ class AdaptiveSession:
             seed=seed,
             constraints_func=self._constraint_values if self.constraints else None,
         )
+        self._sampler = sampler
         self._study = _optuna.create_study(
             study_name=study_name,
             storage=self._storage,
@@ -203,7 +204,9 @@ class AdaptiveSession:
         proposals = []
         for _ in range(n):
             trial = self._study.ask()
-            proposals.append((trial.number, self._suggest(trial)))
+            config = self._suggest(trial)
+            self._register_generation(trial.number)
+            proposals.append((trial.number, config))
         return proposals
 
     def tell(
@@ -252,6 +255,7 @@ class AdaptiveSession:
         self._storage.set_trial_user_attr(
             internal, "n_reps", {k: v[2] for k, v in summary.items()}
         )
+        self._register_generation(trial_id)
         self._study.tell(
             trial_id, [summary[o.name][0] * o.weight for o in self.observables]
         )
@@ -264,6 +268,10 @@ class AdaptiveSession:
         except KeyError as error:
             msg = f"Unknown trial id {trial_id}"
             raise ValueError(msg) from error
+
+    def _register_generation(self, trial_id: int) -> None:
+        trial = self._storage.get_trial(self._trial_id(trial_id))
+        self._sampler.get_trial_generation(self._study, trial)
 
     def trials(self, state: str | None = None) -> list[SessionTrial]:
         """Inspect trials in creation order without exposing storage internals.
@@ -371,6 +379,7 @@ class AdaptiveSession:
         )
         internal = self._storage.create_new_trial(self._study_id, template)
         child = self._storage.get_trial(internal)
+        self._register_generation(child.number)
         return child.number, dict(child.params)
 
     def enqueue(self, config: dict[str, Any]) -> None:
@@ -412,6 +421,8 @@ class AdaptiveSession:
             caller's assertion of matching model, scorer, data and fidelity;
             the library cannot establish that assertion from scores alone.
         """
+        import optuna as _optuna
+
         if self.revision is None:
             msg = "warm_start requires an explicit model/data revision"
             raise ValueError(msg)
@@ -419,12 +430,19 @@ class AdaptiveSession:
         templates = _import_trials(
             results, self.factors, self.observables, self.constraints, self._schema
         )
+        trials = self._study.get_trials()
+        unfinished = {
+            t.user_attrs["evaluation_id"]: t.number
+            for t in trials
+            if t.state.name == "RUNNING" and "_import_values" in t.user_attrs
+        }
         existing = {
             t.user_attrs.get(
                 "evaluation_id", f"{self._session_id}:{t.number}"
             ): _fingerprint(t)
-            for t in self._study.get_trials()
+            for t in trials
             if t.state.name == "COMPLETE"
+            or (t.state.name == "RUNNING" and "_import_values" in t.user_attrs)
         }
         pending = []
         for trial in templates:
@@ -433,13 +451,25 @@ class AdaptiveSession:
             if identity in existing and existing[identity] != fingerprint:
                 msg = f"Conflicting imported evaluation {identity!r}"
                 raise ValueError(msg)
-            if identity not in existing:
+            if identity not in existing or identity in unfinished:
+                trial.user_attrs["_resume_trial"] = unfinished.pop(identity, None)
                 pending.append(trial)
                 existing[identity] = fingerprint
         imported = []
         for trial in pending:
-            self._study.add_trial(trial)
-            imported.append(self._study.get_trials()[-1].number)
+            number = trial.user_attrs.pop("_resume_trial")
+            if number is None:
+                running = _optuna.trial.create_trial(
+                    state=_optuna.trial.TrialState.RUNNING,
+                    params=trial.params,
+                    distributions=trial.distributions,
+                    user_attrs={**trial.user_attrs, "_import_values": trial.values},
+                )
+                internal = self._storage.create_new_trial(self._study_id, running)
+                number = self._storage.get_trial(internal).number
+            self._register_generation(number)
+            self._study.tell(number, trial.values)
+            imported.append(number)
         return imported
 
     def results(self) -> ResultsTable:

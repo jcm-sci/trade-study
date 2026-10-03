@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 - Opt-in `EvaluationCache` reuses grid evaluations by typed configuration, replicate namespace/id, model/scorer revision, fidelity, objective and annotation definitions; includes provenance, bypass, invalidation and conflicting-evidence checks (#154).
 - `preference_sweep()` reports ranking/selection stability, regret, feasible Pareto alternatives, raw-unit practical equivalence and optional paired uncertainty under explicit normalization and preference assumptions, with exportable per-design summaries (#155).
 
+### Fixed
+
+- Queued, retried and imported adaptive evaluations now join NSGA-II generations and process constraints when completed; interrupted imports resume idempotently. The adaptive extra now requires Optuna >=4.5 for its public generation API (#164).
+
 ## [0.3.0] — 2026-10-02
 
 ### Added
