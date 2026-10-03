@@ -19,12 +19,14 @@ Optional dependency: install via the ``trade-study[surrogate]`` extra.
 
 from __future__ import annotations
 
+import json
 import warnings
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from ._checkpoint import _value
 from .design import Factor, FactorType, value_to_unit
 
 if TYPE_CHECKING:
@@ -115,6 +117,29 @@ class _FactorEncoder:
         return np.asarray(rows, dtype=np.float64)
 
 
+@dataclass(frozen=True)
+class PredictionSupport:
+    """Marginal training-support diagnostics for one query and observable.
+
+    These checks flag extrapolation; they do not establish joint support or
+    provide a calibrated uncertainty guarantee.
+    """
+
+    config_index: int
+    observable: str
+    outside_ranges: dict[str, tuple[float, float]]
+    unseen_levels: dict[str, Any]
+
+    @property
+    def supported(self) -> bool:
+        """Whether every factor lies within its observed marginal support.
+
+        Returns:
+            True when no range or level check failed.
+        """
+        return not self.outside_ranges and not self.unseen_levels
+
+
 @dataclass
 class SurrogateModel:
     """Fitted surrogate over a :class:`ResultsTable`.
@@ -132,6 +157,12 @@ class SurrogateModel:
             (fewer than 2 folds); ``float("nan")`` in that case.
         cv_rmse: Per-observable held-out cross-validated RMSE, companion
             to ``cv_r2`` in the observable's original units.
+        row_cv_r2: Shuffled row-validation R², even when grouping is selected.
+        row_cv_rmse: Shuffled row-validation RMSE in observable units.
+        cv_group_by: Grouping factor names, or None for shuffled row validation.
+        validation_groups: Group ids aligned with the original results rows.
+        support_ranges: Observed continuous bounds per fitted observable.
+        support_levels: Observed levels per fitted observable.
     """
 
     method: str
@@ -140,17 +171,75 @@ class SurrogateModel:
     models: list[Any]
     cv_r2: dict[str, float] = field(default_factory=dict)
     cv_rmse: dict[str, float] = field(default_factory=dict)
+    row_cv_r2: dict[str, float] = field(default_factory=dict)
+    row_cv_rmse: dict[str, float] = field(default_factory=dict)
+    cv_group_by: tuple[str, ...] | None = None
+    validation_groups: list[int] = field(default_factory=list)
+    support_ranges: dict[str, dict[str, tuple[float, float]]] = field(
+        default_factory=dict
+    )
+    support_levels: dict[str, dict[str, list[Any]]] = field(default_factory=dict)
 
-    def predict(self, config: dict[str, Any]) -> dict[str, float]:
+    def support(self, configs: Sequence[dict[str, Any]]) -> list[PredictionSupport]:
+        """Inspect observed support without predicting or emitting warnings.
+
+        Args:
+            configs: Factor configurations to inspect.
+
+        Returns:
+            One diagnostic per configuration and fitted observable. Support
+            uses finite training rows for that observable, in raw factor units.
+
+        """
+        reports = []
+        for index, config in enumerate(configs):
+            for observable in self.observable_names:
+                outside = {
+                    name: bounds
+                    for name, bounds in self.support_ranges.get(observable, {}).items()
+                    if not bounds[0] <= float(config[name]) <= bounds[1]
+                }
+                unseen = {
+                    name: config[name]
+                    for name, levels in self.support_levels.get(observable, {}).items()
+                    if config[name] not in levels
+                }
+                reports.append(PredictionSupport(index, observable, outside, unseen))
+        return reports
+
+    def _encode(
+        self, configs: Sequence[dict[str, Any]], *, warn_support: bool
+    ) -> NDArray[np.float64]:
+        x = self.encoder.transform(configs)
+        if warn_support:
+            reports = [r for r in self.support(configs) if not r.supported]
+            if reports:
+                factors = sorted({
+                    name
+                    for r in reports
+                    for name in (*r.outside_ranges, *r.unseen_levels)
+                })
+                warnings.warn(
+                    f"Query outside observed training support for factors {factors}; "
+                    "predictions extrapolate and may be unreliable. Inspect support().",
+                    UserWarning,
+                    stacklevel=3,
+                )
+        return x
+
+    def predict(
+        self, config: dict[str, Any], *, warn_support: bool = True
+    ) -> dict[str, float]:
         """Predict observables for a single config.
 
         Args:
             config: Factor-keyed config dict.
+            warn_support: Warn on values outside observed training support.
 
         Returns:
             Mapping from observable name to predicted scalar.
         """
-        x = self.encoder.transform([config])
+        x = self._encode([config], warn_support=warn_support)
         return {
             name: float(model.predict(x)[0])
             for name, model in zip(self.observable_names, self.models, strict=True)
@@ -159,17 +248,20 @@ class SurrogateModel:
     def predict_batch(
         self,
         configs: Sequence[dict[str, Any]],
+        *,
+        warn_support: bool = True,
     ) -> dict[str, NDArray[np.float64]]:
         """Predict observables for a batch of configs.
 
         Args:
             configs: Sequence of factor-keyed config dicts.
+            warn_support: Warn on values outside observed training support.
 
         Returns:
             Mapping from observable name to a length-``len(configs)``
             array of predictions.
         """
-        x = self.encoder.transform(configs)
+        x = self._encode(configs, warn_support=warn_support)
         return {
             name: np.asarray(model.predict(x), dtype=np.float64)
             for name, model in zip(self.observable_names, self.models, strict=True)
@@ -178,6 +270,8 @@ class SurrogateModel:
     def spread_batch(
         self,
         configs: Sequence[dict[str, Any]],
+        *,
+        warn_support: bool = True,
     ) -> dict[str, NDArray[np.float64]]:
         """Predictive spread per observable for a batch of configs (#115).
 
@@ -187,11 +281,12 @@ class SurrogateModel:
 
         Args:
             configs: Sequence of factor-keyed config dicts.
+            warn_support: Warn on values outside observed training support.
 
         Returns:
             Mapping from observable name to a length-``len(configs)`` array.
         """
-        x = self.encoder.transform(configs)
+        x = self._encode(configs, warn_support=warn_support)
         out: dict[str, NDArray[np.float64]] = {}
         for name, model in zip(self.observable_names, self.models, strict=True):
             if self.method == "gp":
@@ -201,11 +296,14 @@ class SurrogateModel:
             out[name] = np.asarray(std, dtype=np.float64)
         return out
 
-    def uncertainty(self, config: dict[str, Any]) -> dict[str, float]:
+    def uncertainty(
+        self, config: dict[str, Any], *, warn_support: bool = True
+    ) -> dict[str, float]:
         """Predictive standard deviation per observable (GP only).
 
         Args:
             config: Factor-keyed config dict.
+            warn_support: Warn on values outside observed training support.
 
         Returns:
             Mapping from observable name to predictive standard deviation.
@@ -220,7 +318,7 @@ class SurrogateModel:
                 f"this surrogate uses method={self.method!r}"
             )
             raise NotImplementedError(msg)
-        x = self.encoder.transform([config])
+        x = self._encode([config], warn_support=warn_support)
         out: dict[str, float] = {}
         for name, model in zip(self.observable_names, self.models, strict=True):
             _, std = model.predict(x, return_std=True)
@@ -228,7 +326,7 @@ class SurrogateModel:
         return out
 
 
-def fit_surrogate(
+def fit_surrogate(  # ruff: ignore[too-many-arguments]
     results: ResultsTable,
     factors: list[Factor],
     *,
@@ -237,6 +335,7 @@ def fit_surrogate(
     n_estimators: int = 200,
     cv_folds: int = 5,
     warn_below_r2: float | None = 0.0,
+    cv_group_by: str | Sequence[str] | None = None,
 ) -> SurrogateModel:
     """Fit a per-observable surrogate over a :class:`ResultsTable`.
 
@@ -269,6 +368,12 @@ def fit_surrogate(
             observable whose ``cv_r2`` falls below this threshold --
             0.0 (the default) flags a surrogate that predicts no better
             than the training mean. Pass ``None`` to disable.
+        cv_group_by: ``"design"`` groups identical factor configurations;
+            a sequence of factor names groups by those regime descriptors.
+            Grouped folds keep all rows of a group together. When selected,
+            ``cv_r2``/``cv_rmse`` report grouped validation; ``row_cv_r2`` and
+            ``row_cv_rmse`` retain shuffled row validation for comparison.
+            ``None`` preserves the existing row-validation behavior.
 
     Returns:
         A fitted :class:`SurrogateModel`.
@@ -289,22 +394,27 @@ def fit_surrogate(
 
     encoder = _FactorEncoder.from_factors(factors)
     x_full = encoder.transform(results.configs)
+    group_names, groups = _validation_groups(results.configs, factors, cv_group_by)
 
-    models: list[Any] = []
-    fitted_obs: list[str] = []
-    cv_r2: dict[str, float] = {}
-    cv_rmse: dict[str, float] = {}
+    surrogate = SurrogateModel(
+        method=method,
+        encoder=encoder,
+        observable_names=[],
+        models=[],
+        cv_group_by=group_names,
+        validation_groups=[] if groups is None else groups.tolist(),
+    )
     low_accuracy: list[str] = []
     for j, name in enumerate(results.observable_names):
         y = results.scores[:, j]
-        mask = ~np.isnan(y)
+        mask = np.isfinite(y)
         n_rows = int(mask.sum())
         if n_rows < 2:
             continue
         model = _make_estimator(method, seed=seed, n_estimators=n_estimators)
         model.fit(x_full[mask], y[mask])
-        models.append(model)
-        fitted_obs.append(name)
+        surrogate.models.append(model)
+        surrogate.observable_names.append(name)
 
         r2, rmse = _cross_val_accuracy(
             x_full[mask],
@@ -314,12 +424,27 @@ def fit_surrogate(
             n_estimators=n_estimators,
             n_folds=min(cv_folds, n_rows),
         )
-        cv_r2[name] = r2
-        cv_rmse[name] = rmse
+        surrogate.row_cv_r2[name], surrogate.row_cv_rmse[name] = r2, rmse
+        if groups is not None:
+            r2, rmse = _cross_val_accuracy(
+                x_full[mask],
+                y[mask],
+                method=method,
+                seed=seed,
+                n_estimators=n_estimators,
+                n_folds=cv_folds,
+                groups=groups[mask],
+            )
+        configs = [cfg for cfg, keep in zip(results.configs, mask, strict=True) if keep]
+        surrogate.support_ranges[name], surrogate.support_levels[name] = (
+            _training_support(configs, factors)
+        )
+        surrogate.cv_r2[name] = r2
+        surrogate.cv_rmse[name] = rmse
         if warn_below_r2 is not None and np.isfinite(r2) and r2 < warn_below_r2:
             low_accuracy.append(name)
 
-    if not models:
+    if not surrogate.models:
         msg = (
             "fit_surrogate: no observable has at least 2 non-NaN training "
             "rows; nothing to fit"
@@ -335,14 +460,71 @@ def fit_surrogate(
             stacklevel=2,
         )
 
-    return SurrogateModel(
-        method=method,
-        encoder=encoder,
-        observable_names=fitted_obs,
-        models=models,
-        cv_r2=cv_r2,
-        cv_rmse=cv_rmse,
+    return surrogate
+
+
+def _validation_groups(
+    configs: list[dict[str, Any]],
+    factors: list[Factor],
+    group_by: str | Sequence[str] | None,
+) -> tuple[tuple[str, ...] | None, NDArray[np.int64] | None]:
+    """Create stable group ids from selected factor values.
+
+    Returns:
+        Grouping factor names and an aligned integer group vector, or None.
+
+    Raises:
+        ValueError: If grouping names are empty, duplicated, or unknown.
+    """
+    if group_by is None:
+        return None, None
+    names = tuple(f.name for f in factors) if group_by == "design" else tuple(group_by)
+    if isinstance(group_by, str) and group_by != "design":
+        msg = "cv_group_by must be 'design' or a sequence of factor names"
+        raise ValueError(msg)
+    if (
+        not names
+        or len(set(names)) != len(names)
+        or set(names) - {f.name for f in factors}
+    ):
+        msg = "cv_group_by must contain distinct known factor names"
+        raise ValueError(msg)
+    identities: dict[str, int] = {}
+    definitions = {f.name: f for f in factors}
+    groups = []
+    for config in configs:
+        key = json.dumps(
+            [_group_value(definitions[name], config) for name in names],
+            sort_keys=True,
+            allow_nan=False,
+        )
+        groups.append(identities.setdefault(key, len(identities)))
+    return names, np.asarray(groups, dtype=np.int64)
+
+
+def _group_value(factor: Factor, config: dict[str, Any]) -> object:
+    if factor.factor_type == FactorType.CONTINUOUS:
+        return float(config[factor.name])
+    return _value(
+        next(level for level in (factor.levels or []) if level == config[factor.name]),
+        None,
     )
+
+
+def _training_support(
+    configs: list[dict[str, Any]], factors: list[Factor]
+) -> tuple[dict[str, tuple[float, float]], dict[str, list[Any]]]:
+    ranges = {}
+    levels = {}
+    for factor in factors:
+        values = [config[factor.name] for config in configs]
+        if factor.factor_type == FactorType.CONTINUOUS:
+            ranges[factor.name] = min(map(float, values)), max(map(float, values))
+        else:
+            levels[factor.name] = [
+                level for level in (factor.levels or []) if level in values
+            ]
+    return ranges, levels
 
 
 def _cross_val_accuracy(
@@ -353,6 +535,7 @@ def _cross_val_accuracy(
     seed: int,
     n_estimators: int,
     n_folds: int,
+    groups: NDArray[np.int64] | None = None,
 ) -> tuple[float, float]:
     """K-fold cross-validated R^2/RMSE for one observable.
 
@@ -360,14 +543,20 @@ def _cross_val_accuracy(
         ``(r2, rmse)``, both ``float("nan")`` if fewer than 2 folds are
         possible.
     """
+    n_folds = min(n_folds, len(y) if groups is None else len(np.unique(groups)))
     if n_folds < 2:
         return float("nan"), float("nan")
 
-    from sklearn.model_selection import KFold  # type: ignore[import-untyped]
+    from sklearn.model_selection import GroupKFold, KFold  # type: ignore[import-untyped]
 
     kfold = KFold(n_splits=n_folds, shuffle=True, random_state=seed)
-    y_pred = np.empty_like(y)
-    for train_idx, test_idx in kfold.split(x):
+    splits = (
+        kfold.split(x)
+        if groups is None
+        else GroupKFold(n_splits=n_folds).split(x, y, groups)
+    )
+    y_pred = np.empty(y.shape, dtype=np.float64)
+    for train_idx, test_idx in splits:
         fold_model = _make_estimator(method, seed=seed, n_estimators=n_estimators)
         fold_model.fit(x[train_idx], y[train_idx])
         y_pred[test_idx] = fold_model.predict(x[test_idx])

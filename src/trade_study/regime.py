@@ -46,6 +46,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from .protocols import Observable, ResultsTable, Scorer, Simulator
+    from .surrogate import PredictionSupport
 
 
 _SUPPORTED_MODES: frozenset[str] = frozenset({"min", "max"})
@@ -107,26 +108,63 @@ class RegimeSurrogate:
         """
         return self.inner.cv_rmse
 
+    @property
+    def row_cv_r2(self) -> dict[str, float]:
+        """Shuffled row-validation R^2, for comparison with grouped validation.
+
+        Returns:
+            Per-observable row-validation R^2 from the underlying surrogate.
+        """
+        return self.inner.row_cv_r2
+
+    @property
+    def row_cv_rmse(self) -> dict[str, float]:
+        """Shuffled row-validation RMSE in observable units.
+
+        Returns:
+            Per-observable row-validation RMSE from the underlying surrogate.
+        """
+        return self.inner.row_cv_rmse
+
+    def support(
+        self, regime: dict[str, Any], configs: Sequence[dict[str, Any]]
+    ) -> list[PredictionSupport]:
+        """Inspect observed support at a query regime without warnings.
+
+        Args:
+            regime: Regime descriptor values.
+            configs: Design-factor configurations to inspect.
+
+        Returns:
+            Marginal support diagnostics for each config and observable.
+        """
+        return self.inner.support([_merge(regime, c) for c in configs])
+
     def predict(
         self,
         regime: dict[str, Any],
         config: dict[str, Any],
+        *,
+        warn_support: bool = True,
     ) -> dict[str, float]:
         """Predict observables at a regime + config pair.
 
         Args:
             regime: Mapping of regime-feature names to values.
             config: Mapping of design-factor names to values.
+            warn_support: Warn on values outside observed training support.
 
         Returns:
             Mapping from observable name to predicted scalar.
         """
-        return self.inner.predict(_merge(regime, config))
+        return self.inner.predict(_merge(regime, config), warn_support=warn_support)
 
     def predict_batch(
         self,
         regime: dict[str, Any],
         configs: Sequence[dict[str, Any]],
+        *,
+        warn_support: bool = True,
     ) -> dict[str, NDArray[np.float64]]:
         """Predict observables for a batch of configs at one regime.
 
@@ -134,24 +172,28 @@ class RegimeSurrogate:
             regime: Mapping of regime-feature names to values.
             configs: Sequence of design-factor configs to score at
                 ``regime``.
+            warn_support: Warn on values outside observed training support.
 
         Returns:
             Mapping from observable name to a length-``len(configs)``
             array of predictions.
         """
         merged = [_merge(regime, c) for c in configs]
-        return self.inner.predict_batch(merged)
+        return self.inner.predict_batch(merged, warn_support=warn_support)
 
     def uncertainty(
         self,
         regime: dict[str, Any],
         config: dict[str, Any],
+        *,
+        warn_support: bool = True,
     ) -> dict[str, float]:
         """Predictive standard deviation per observable (GP only).
 
         Args:
             regime: Mapping of regime-feature names to values.
             config: Mapping of design-factor names to values.
+            warn_support: Warn on values outside observed training support.
 
         Returns:
             Mapping from observable name to predictive standard deviation.
@@ -159,7 +201,7 @@ class RegimeSurrogate:
             surrogate when the backend does not expose calibrated
             uncertainties (non-GP backends).
         """
-        return self.inner.uncertainty(_merge(regime, config))
+        return self.inner.uncertainty(_merge(regime, config), warn_support=warn_support)
 
     def recommend(  # ruff: ignore[too-many-arguments]
         self,
@@ -172,6 +214,7 @@ class RegimeSurrogate:
         candidates: Sequence[dict[str, Any]] | None = None,
         warn_below_r2: float | None = 0.0,
         risk: float = 0.0,
+        warn_support: bool = True,
     ) -> dict[str, Any]:
         """Recommend a design-factor config at a query regime.
 
@@ -201,6 +244,8 @@ class RegimeSurrogate:
                 ``None`` to disable.
             risk: Non-negative multiple of the predictive spread added to
                 the ranking criterion; ``0`` ranks on predictions alone.
+            warn_support: Warn if candidates or the query regime lie outside
+                observed training support. Inspect :meth:`support` for details.
 
         Returns:
             The candidate config (a copy) achieving the best predicted
@@ -245,10 +290,10 @@ class RegimeSurrogate:
         if not pool:
             msg = "recommend: no candidates to score"
             raise ValueError(msg)
-        preds = self.predict_batch(regime, pool)[objective]
+        preds = self.predict_batch(regime, pool, warn_support=warn_support)[objective]
         if risk > 0:
             merged = [_merge(regime, c) for c in pool]
-            spread = self.inner.spread_batch(merged)[objective]
+            spread = self.inner.spread_batch(merged, warn_support=False)[objective]
             preds = preds + risk * spread if mode == "min" else preds - risk * spread
         idx = int(np.argmin(preds)) if mode == "min" else int(np.argmax(preds))
         return dict(pool[idx])
@@ -264,6 +309,7 @@ def fit_regime_surrogate(  # ruff: ignore[too-many-arguments]
     n_estimators: int = 200,
     cv_folds: int = 5,
     warn_below_r2: float | None = 0.0,
+    cv_group_by: str | Sequence[str] | None = None,
 ) -> RegimeSurrogate:
     """Fit a surrogate that conditions on regime features.
 
@@ -290,6 +336,9 @@ def fit_regime_surrogate(  # ruff: ignore[too-many-arguments]
             (#114). See :func:`trade_study.fit_surrogate`.
         warn_below_r2: Warn if any observable's cross-validated R^2 falls
             below this threshold. See :func:`trade_study.fit_surrogate`.
+        cv_group_by: ``"regime"`` holds out complete regime descriptor tuples;
+            ``"design"`` groups identical joint configurations. A sequence
+            selects grouping factor names; None retains shuffled row CV.
 
     Returns:
         A fitted :class:`RegimeSurrogate`.
@@ -317,6 +366,9 @@ def fit_regime_surrogate(  # ruff: ignore[too-many-arguments]
         n_estimators=n_estimators,
         cv_folds=cv_folds,
         warn_below_r2=warn_below_r2,
+        cv_group_by=(
+            [f.name for f in regime_factors] if cv_group_by == "regime" else cv_group_by
+        ),
     )
     return RegimeSurrogate(
         inner=inner,

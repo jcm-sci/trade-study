@@ -48,7 +48,7 @@ from .study import (
     top_k_pareto_filter,
     weighted_sum_filter,
 )
-from .surrogate import SurrogateModel, fit_surrogate
+from .surrogate import PredictionSupport, SurrogateModel, fit_surrogate
 from .viz import plot_calibration, plot_front, plot_parallel, plot_scores
 
 __all__ = [
@@ -63,6 +63,7 @@ __all__ = [
     "PairedDifference",
     "PartialEvaluator",
     "Phase",
+    "PredictionSupport",
     "RegimeSurrogate",
     "ResultsTable",
     "Scorer",
