@@ -163,7 +163,9 @@ def test_recommend_warn_below_r2_none_disables(
     )
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        sur.recommend({"n": 5.0}, objective="loss", warn_below_r2=None)
+        sur.recommend(
+            {"n": 5.0}, objective="loss", warn_below_r2=None, warn_support=False
+        )
 
 
 # ---------------------------------------------------------------------------

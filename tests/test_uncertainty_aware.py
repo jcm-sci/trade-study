@@ -55,12 +55,12 @@ def test_risk_penalizes_uncertain_candidates(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(
         surrogate,
         "predict_batch",
-        lambda *_: {"loss": np.array([0.10, 0.12])},
+        lambda *_, **__: {"loss": np.array([0.10, 0.12])},
     )
     monkeypatch.setattr(
         surrogate.inner,
         "spread_batch",
-        lambda *_: {"loss": np.array([0.05, 0.001])},
+        lambda *_, **__: {"loss": np.array([0.05, 0.001])},
     )
 
     plain = surrogate.recommend({"n": 1.0}, objective="loss", candidates=candidates)
