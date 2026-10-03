@@ -284,6 +284,8 @@ class Study:
                     n_jobs=n_jobs,
                     n_reps=phase.n_reps,
                     callback=callback,
+                    checkpoint_path=saved / "trials.sqlite" if saved else None,
+                    checkpoint_key=self.checkpoint_key,
                 )
             else:
                 grid = (
@@ -298,6 +300,8 @@ class Study:
                     n_jobs=n_jobs,
                     n_reps=phase.n_reps,
                     callback=callback,
+                    checkpoint_path=saved / "trials.sqlite" if saved else None,
+                    checkpoint_key=self.checkpoint_key,
                 )
 
             self._results[phase.name] = result

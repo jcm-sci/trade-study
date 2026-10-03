@@ -26,6 +26,12 @@ be inferred from code. Update the key whenever those inputs change. Opaque
 callables require a key. A matching key does not override structural mismatches.
 A checkpoint is not a serialization of live simulator/scorer objects.
 
+Grid phases also write a `trials.sqlite` ledger inside their phase directory.
+An interrupted phase resumes its unfinished evaluations without repeating
+completed design-point/replicate tasks. Adaptive phases retain phase-level
+checkpointing; use a persistent `AdaptiveSession` for external adaptive trial
+recovery. Final phase results keep the existing `save_results()` format.
+
 Externally evaluated phase results can still be supplied with `save_results()`
 after initializing the manifest using `Study.save()`. Their observable schema
 must match the study.
