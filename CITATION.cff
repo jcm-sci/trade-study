@@ -28,8 +28,8 @@ keywords:
   - sensitivity-analysis
   - multi-objective-optimization
 license: MIT
-version: "0.2.0"
-date-released: "2026-08-17"
+version: "0.3.0"
+date-released: "2026-10-02"
 identifiers:
   - type: doi
     value: "10.5281/zenodo.19599838"
