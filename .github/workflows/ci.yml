@@ -59,6 +59,8 @@ jobs:
         run: uv run python examples/cstr_study.py
       - name: Run sklearn example
         run: uv run python examples/sklearn_study.py
+      - name: Run assay cost annotation example
+        run: uv run python examples/assay_study.py
 
   ci:
     name: ci

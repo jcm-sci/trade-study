@@ -64,6 +64,7 @@ nav:
   - User Guide:
       - Reactor Design (CSTR): guide/cstr.md
       - Hyperparameter Sweep (sklearn): guide/sklearn.md
+      - Assay Costs and Annotations: guide/assay.md
       - Monitoring Station Design: guide/monitoring.md
       - Bayesian Model Criticism: guide/bayesian.md
   - API Reference:
