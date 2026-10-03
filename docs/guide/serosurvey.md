@@ -12,6 +12,8 @@ to read the narrative, code, tables and saved figures. The accompanying
 [Python script](https://github.com/jcm-sci/trade-study/blob/main/examples/serosurvey_study.py)
 contains the simulator and plotting helpers and regenerates these figures.
 Use both files from a checkout; the notebook imports the companion module.
+The notebook addresses the presentation audience directly. Setup commands,
+export instructions and the suggested running order are collected in this guide.
 
 ## Run or present the notebook
 
@@ -38,6 +40,16 @@ to HTML for an additional presentation copy:
 
 ```bash
 uv run --extra notebook jupyter nbconvert --to html examples/serosurvey_study.ipynb
+```
+
+To omit the collapsed setup code from a presentation copy while keeping the
+analysis code visible:
+
+```bash
+uv run --extra notebook jupyter nbconvert --to html \
+  --TagRemovePreprocessor.enabled=True \
+  --TagRemovePreprocessor.remove_input_tags='["hide-input"]' \
+  examples/serosurvey_study.ipynb
 ```
 
 To verify execution in a fresh kernel without modifying the saved notebook:
@@ -99,7 +111,7 @@ signed errors before taking their absolute value would measure something differe
 
 ## Inspect feasible alternatives
 
-A `Constraint` imposes an illustrative $40,000 financial budget. The Pareto
+A `Constraint` imposes an illustrative \$40,000 financial budget. The Pareto
 set minimizes cost, overall MAE and underserved-group MAE simultaneously.
 Subgroup error is a narrow measure of information equity, not a comprehensive
 measure of equity in health outcomes.
@@ -118,7 +130,7 @@ not simultaneous post-selection confidence guarantees.
 
 The notebook passes the raw results to `preference_sweep()` with three explicit
 preference vectors and `normalization="reference"`. Fixed reference ranges are
-$0–70,000, 0–4 percentage points overall MAE, and 0–10 percentage points subgroup
+\$0–70,000, 0–4 percentage points overall MAE, and 0–10 percentage points subgroup
 MAE. These anchors scale preferences; they are not feasibility thresholds and
 do not clip values. Scenario weights are hypothetical, not elicited stakeholder values.
 
@@ -130,7 +142,7 @@ can change with further simulation or different assumptions. Any reported
 selection fraction describes the supplied preference scenarios, not a probability
 that a design is best.
 
-For a short live interaction, change the budget to $30,000 in the decision
+For a short live interaction, change the budget to \$30,000 in the decision
 cell and rerun that cell and the figures below it. Restore the budget and edit
 the subgroup-priority weights to compare another preference. No simulation
 rerun is needed. If the budget admits no alternative, the example reports no choice.
@@ -151,10 +163,11 @@ The optional cost breakdown in the appendix supports an economics discussion:
 | 12–13 | Assumptions a real project would replace |
 | 13–15 | Discussion |
 
-The notebook includes presenter notes and slideshow cell metadata. Leave the
-model details and cost breakdown as appendices for the main talk. The saved
-notebook and HTML export make a Beamer build unnecessary for the current
-fast-running example.
+The notebook's setup cells are collapsed, and slideshow metadata identifies
+the main narrative and its figures. The model details and cost breakdown are
+technical appendices. Use this guide's running order and budget/priority changes
+to prepare the presentation; saved notebook outputs and HTML support a version
+without live execution.
 
 ## What a real project would replace
 
@@ -166,8 +179,19 @@ fixed and does not equate antibody-status prevalence with complete protection.
 Communities are sampled without selection bias by construction. Real selection
 and nonresponse can introduce bias that more simulation cannot remove.
 
-The source notebook links the IVAC projects and member profiles that informed
-its scope. Those connections do not imply endorsement of the example.
+The notebook's references link to related serosurveillance work and its costing
+literature. They provide context for the scientific question; the numerical
+assumptions are illustrative.
+
+## Export the results
+
+From a notebook code cell, export the per-design scores and decision metadata:
+
+```python
+report.summary.to_dataframe(include_metadata=True).to_csv(
+    "serosurvey_designs.csv", index=False
+)
+```
 
 To regenerate documentation figures:
 
