@@ -10,10 +10,12 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from ._checkpoint import _manifest
 from ._pareto import extract_front, hypervolume, igd_plus, pareto_rank
 from .io import load_results, save_results
 from .protocols import Direction
@@ -194,6 +196,11 @@ class Study:
         phases: Ordered list of study phases.
         annotations: External information (costs, constraints).
         factors: Factor definitions (needed for adaptive mode).
+        checkpoint_key: Caller-managed model/data revision for checkpoint
+            compatibility. Change this when simulator/scorer instance state,
+            external data, globals or callable behavior changes. Structural
+            definitions and inspectable code are checked automatically;
+            opaque callables require an explicit key.
     """
 
     world: Simulator
@@ -202,6 +209,7 @@ class Study:
     phases: list[Phase]
     annotations: list[Annotation] = field(default_factory=list)
     factors: list[Any] = field(default_factory=list)
+    checkpoint_key: str | None = None
 
     _results: dict[str, ResultsTable] = field(default_factory=dict, init=False)
 
@@ -241,7 +249,7 @@ class Study:
                 self._phase_dir(checkpoint, index) if checkpoint is not None else None
             )
             if saved is not None and (saved / "meta.json").exists():
-                result = load_results(saved)
+                result = self._load_phase(saved)
                 self._results[phase.name] = result
                 prev_result = result
                 carry_grid = self._carry(phase)
@@ -317,24 +325,63 @@ class Study:
         return root / f"{index:02d}_{name}"
 
     def _write_index(self, root: Path) -> None:
-        """Record the phase order, refusing a checkpoint of another study.
+        """Validate or atomically write the checkpoint study definition.
 
         Raises:
-            ValueError: If ``root`` holds a checkpoint with different phases.
+            ValueError: If the checkpoint is incompatible or unverifiable.
         """
-        names = [phase.name for phase in self.phases]
+        definition = _manifest(self)
         index_path = root / "study.json"
         if index_path.exists():
-            recorded = json.loads(index_path.read_text())["phases"]
-            if recorded != names:
+            recorded = json.loads(index_path.read_text())
+            if recorded.get("phases") != definition["phases"]:
                 msg = (
-                    f"Checkpoint at {root} was written for phases {recorded}, "
-                    f"not {names}"
+                    f"Checkpoint at {root} was written for phases "
+                    f"{recorded.get('phases')}, not {definition['phases']}"
+                )
+                raise ValueError(msg)
+            if recorded != definition:
+                msg = (
+                    f"Checkpoint at {root} has an incompatible study definition "
+                    "or legacy manifest; use a new checkpoint directory and "
+                    "set checkpoint_key to identify model/data revisions"
                 )
                 raise ValueError(msg)
             return
         root.mkdir(parents=True, exist_ok=True)
-        index_path.write_text(json.dumps({"phases": names}, indent=2))
+        with NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=root, delete=False
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+            try:
+                temporary.write(json.dumps(definition, indent=2, allow_nan=False))
+                temporary.flush()
+            except BaseException:
+                temporary_path.unlink(missing_ok=True)
+                raise
+        try:
+            temporary_path.replace(index_path)
+        finally:
+            temporary_path.unlink(missing_ok=True)
+
+    def _load_phase(self, path: Path) -> ResultsTable:
+        """Load a checkpoint phase and verify its observable schema.
+
+        Returns:
+            The validated phase results.
+
+        Raises:
+            ValueError: If the saved observable names or score shape differ.
+        """
+        result = load_results(path)
+        names = [observable.name for observable in self.observables]
+        if result.observable_names != names or result.scores.shape != (
+            len(result.configs),
+            len(names),
+        ):
+            msg = f"Checkpoint phase at {path} has an incompatible observable schema"
+            raise ValueError(msg)
+        return result
 
     def save(self, path: str | Path) -> None:
         """Save every completed phase's results as a checkpoint (#75).
@@ -371,7 +418,7 @@ class Study:
         for index, phase in enumerate(self.phases):
             saved = self._phase_dir(root, index)
             if (saved / "meta.json").exists():
-                self._results[phase.name] = load_results(saved)
+                self._results[phase.name] = self._load_phase(saved)
                 loaded.append(phase.name)
         return loaded
 

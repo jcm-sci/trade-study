@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
 
+from trade_study.design import Factor, FactorType
 from trade_study.io import save_results
 from trade_study.protocols import Direction, Observable, ResultsTable
 from trade_study.study import Phase, Study, top_k_pareto_filter
@@ -142,3 +144,76 @@ def test_save_and_load_round_trip(tmp_path: Path) -> None:
     )
     with pytest.raises(FileNotFoundError):
         restored.load(tmp_path / "missing")
+
+
+@pytest.mark.parametrize(
+    "change", ["grid", "reps", "trials", "observables", "factors", "filter", "revision"]
+)
+def test_changed_definition_is_refused(tmp_path: Path, change: str) -> None:
+    original = _study(_World())
+    original.checkpoint_key = "data-v1"
+    original.run(checkpoint_dir=tmp_path)
+    changed = _study(_World())
+    changed.checkpoint_key = "data-v1"
+    if change == "grid":
+        changed.phases[0].grid = [{"alpha": 99.0}]
+    elif change == "reps":
+        changed.phases[0].n_reps = 3
+    elif change == "trials":
+        changed.phases[0].n_trials = 5
+    elif change == "observables":
+        changed.observables = [Observable("error", Direction.MAXIMIZE)]
+    elif change == "factors":
+        changed.factors = [Factor("alpha", FactorType.CONTINUOUS, bounds=(0.0, 1.0))]
+    elif change == "filter":
+        changed.phases[0].filter_fn = top_k_pareto_filter(3)
+    else:
+        changed.checkpoint_key = "data-v2"
+    with pytest.raises(ValueError, match="incompatible study definition"):
+        changed.run(checkpoint_dir=tmp_path)
+    with pytest.raises(ValueError, match="incompatible study definition"):
+        changed.load(tmp_path)
+
+
+def test_legacy_manifest_is_refused(tmp_path: Path) -> None:
+    (tmp_path / "study.json").write_text(json.dumps({"phases": ["screen", "refine"]}))
+    with pytest.raises(ValueError, match="legacy manifest"):
+        _study(_World()).run(checkpoint_dir=tmp_path)
+
+
+def test_loaded_phase_schema_is_checked(tmp_path: Path) -> None:
+    study = _study(_World())
+    study.save(tmp_path)
+    save_results(
+        ResultsTable(
+            configs=[{"alpha": 0.3}],
+            scores=np.array([[0.2]]),
+            observable_names=["wrong"],
+        ),
+        tmp_path / "00_screen",
+    )
+    with pytest.raises(ValueError, match="observable schema"):
+        study.run(checkpoint_dir=tmp_path)
+
+
+class _OpaqueGrid:
+    def __call__(
+        self, results: ResultsTable, observables: list[Observable]
+    ) -> list[dict[str, Any]]:
+        return results.configs
+
+
+def test_opaque_callable_requires_explicit_revision(tmp_path: Path) -> None:
+    study = _study(_World())
+    study.phases[1].grid = _OpaqueGrid()
+    with pytest.raises(ValueError, match="checkpoint_key"):
+        study.run(checkpoint_dir=tmp_path)
+    study.checkpoint_key = "opaque-grid-v1"
+    study.run(checkpoint_dir=tmp_path)
+    resumed = _study(_World())
+    resumed.phases[1].grid = _OpaqueGrid()
+    resumed.checkpoint_key = "opaque-grid-v1"
+    resumed.run(checkpoint_dir=tmp_path)
+    np.testing.assert_array_equal(
+        resumed.results("refine").scores, study.results("refine").scores
+    )
