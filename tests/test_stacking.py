@@ -36,6 +36,8 @@ def _make_arviz_datatree(
 
     n_chains, n_draws, _n_obs = log_lik.shape
     posterior = {"mu": RNG.standard_normal((n_chains, n_draws))}
+    if az.__version__.startswith("0."):
+        return az.from_dict(posterior=posterior, log_likelihood={"obs": log_lik})
     return az.from_dict({
         "posterior": posterior,
         "log_likelihood": {"obs": log_lik},

@@ -70,6 +70,9 @@ nav:
       - Protocols: api/protocols.md
       - Design: api/design.md
       - Runner: api/runner.md
+      - Adaptive Sessions: api/session.md
+      - Paired Comparisons: api/paired.md
+      - Post-hoc Sensitivity: api/sensitivity.md
       - Study: api/study.md
       - Scoring: api/scoring.md
       - Pareto: api/pareto.md

@@ -143,6 +143,8 @@ pip install trade-study[design,pareto]
 | `stacking` | [arviz](https://github.com/arviz-devs/arviz), scipy                                                            | Bayesian and score-based ensemble weights   |
 | `adaptive` | [optuna](https://optuna.org/)                                                                                  | Adaptive multi-objective search (NSGA-II)   |
 | `parallel` | joblib                                                                                                         | Parallel grid execution                     |
+| `viz` | matplotlib | Plot scores and Pareto fronts |
+| `surrogate` | scikit-learn | GP/RF score and regime surrogates |
 | `dataframe` | pandas | ResultsTable export for analysis and CSV |
 | `all`      | All of the above                                                                                               |                                             |
 
@@ -234,6 +236,16 @@ and Sobol sensitivity analysis. `run_grid(..., n_reps=N)` supports replicated
 trials, and `sensitivity_from_table()` estimates post-hoc sensitivity from an
 existing results table through a validated surrogate.
 
+## Release compatibility
+
+Version 0.3.0 adds replicated and paired studies, uncertainty diagnostics,
+persistent adaptive sessions, checkpointing, and DataFrame export. Existing
+phase-name-only checkpoints are refused; use a fresh checkpoint directory and
+set `checkpoint_key` to track model/data revisions. Confidence constraints
+require estimated standard errors rather than assuming unknown uncertainty is
+zero. `stack_proportional()` now uses exponential score utilities in both
+directions; set its temperature in score units to control concentration.
+
 ## Related packages
 
 | Package                                                   | Description                                                                                     |
@@ -261,7 +273,7 @@ If you use this package in your research, please cite:
   title = {{trade-study}: Multi-Objective Trade-Study Orchestration},
   year = {2026},
   url = {https://github.com/jcm-sci/trade-study},
-  version = {0.2.0},
+  version = {0.3.0},
   doi = {10.5281/zenodo.19599838},
 }
 ```

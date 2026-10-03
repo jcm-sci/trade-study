@@ -8,7 +8,7 @@ If you use this package in your research, please cite:
   title = {{trade-study}: Multi-Objective Trade-Study Orchestration},
   year = {2026},
   url = {https://github.com/jcm-sci/trade-study},
-  version = {0.2.0},
+  version = {0.3.0},
   doi = {10.5281/zenodo.19599838},
 }
 ```

@@ -13,3 +13,9 @@ Experimental design: factors, grids, and screening.
 ::: trade_study.reduce_factors
 
 ::: trade_study.screen
+
+::: trade_study.sobol_indices
+
+::: trade_study.unit_to_value
+
+::: trade_study.value_to_unit
