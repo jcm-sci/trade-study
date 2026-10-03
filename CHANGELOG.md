@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 - `run_sequential()` allocates bounded extra replication to unresolved comparisons and feasibility boundaries, preserves raw replicate ids, and reports budgets, stopping reasons and simultaneous finite-horizon mean intervals under explicit bounded-score assumptions (#153).
 - Adaptive sessions queue known configurations and import compatible completed observations with persistent identity/provenance and duplicate protection. Versioned session schemas validate reopened journals and refuse unverifiable legacy storage (#154).
 - Opt-in `EvaluationCache` reuses grid evaluations by typed configuration, replicate namespace/id, model/scorer revision, fidelity, objective and annotation definitions; includes provenance, bypass, invalidation and conflicting-evidence checks (#154).
+- `preference_sweep()` reports ranking/selection stability, regret, feasible Pareto alternatives, raw-unit practical equivalence and optional paired uncertainty under explicit normalization and preference assumptions, with exportable per-design summaries (#155).
 
 ## [0.3.0] — 2026-10-02
 
