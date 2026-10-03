@@ -23,6 +23,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Checkpoints now validate a versioned study definition rather than phase names alone, reject incompatible/legacy manifests and phase schemas, and atomically write the manifest. `Study.checkpoint_key` identifies caller-managed model/data revisions and opaque callable behavior (#143).
+
 - Adaptive phases now honor `Phase.n_reps`, retain raw means/standard errors/replicate counts, and filter/compare already-averaged trials without re-aggregating them. Feasibility checks use raw means in observable units even when adaptive scores are weighted (#142).
 
 - Confidence constraints now reject non-finite means and unknown/invalid standard errors instead of treating missing uncertainty as zero. Adaptive tells require constraint scores and validate them before updating storage; rejected tells can be corrected (#141).
