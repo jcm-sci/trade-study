@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Adaptive trial inspection, explicit failure reporting, and bounded retries with persistent failure reasons and retry lineage (#151).
+- Incremental grid checkpoints preserve completed design-point/replicate evaluations across interruptions, including parallel workers and incomplete `Study` phases. `run_grid(max_retries=...)` provides opt-in bounded retries (#151).
 
 ## [0.3.0] — 2026-10-02
 

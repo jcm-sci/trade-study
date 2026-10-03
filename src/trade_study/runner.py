@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from ._recovery import _grid_identity, _GridLedger
 from .protocols import (
     Annotation,
     Observable,
@@ -24,10 +25,12 @@ from .protocols import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
     from .design import Factor
 
     ProgressCallback = Callable[[int, int, TrialResult], None]
+    _GridTask = tuple[int, dict[str, Any], int]
 
 
 def _generate_accepts_rep(world: Simulator) -> bool:
@@ -77,6 +80,57 @@ def _run_single(
     )
 
 
+def _attempt_grid_task(
+    world: Simulator,
+    scorer: Scorer,
+    task: _GridTask,
+    *,
+    supports_rep: bool,
+    ledger: _GridLedger | None,
+) -> TrialResult | Exception:
+    design_point, config, rep = task
+    try:
+        result = _run_single(world, scorer, config, rep=rep, supports_rep=supports_rep)
+    # User evaluators may raise any Exception; the caller retries or re-raises it.
+    except Exception as error:  # ruff: ignore[blind-except]
+        if ledger is not None:
+            ledger.record(design_point, rep, None, f"{type(error).__name__}: {error}")
+        return error
+    result.metadata["design_point"] = design_point
+    if ledger is not None:
+        ledger.record(design_point, rep, result, None)
+    return result
+
+
+def _run_grid_task(
+    world: Simulator,
+    scorer: Scorer,
+    task: _GridTask,
+    *,
+    supports_rep: bool,
+    ledger: _GridLedger | None,
+    max_retries: int,
+) -> TrialResult:
+    design_point, config, rep = task
+    if ledger is not None:
+        recovered = ledger.load(design_point, rep, config)
+        if recovered is not None:
+            return recovered
+    for attempt in range(max_retries + 1):
+        result = _attempt_grid_task(
+            world, scorer, task, supports_rep=supports_rep, ledger=ledger
+        )
+        if isinstance(result, Exception):
+            if attempt == max_retries:
+                raise result
+        else:
+            if ledger is None and max_retries:
+                result.metadata["attempts"] = attempt + 1
+            return result
+    msg = "Unreachable retry loop exit"
+    raise RuntimeError(msg)
+
+
 def run_grid(  # ruff: ignore[too-many-arguments]
     world: Simulator,
     scorer: Scorer,
@@ -87,6 +141,9 @@ def run_grid(  # ruff: ignore[too-many-arguments]
     n_jobs: int = 1,
     n_reps: int = 1,
     callback: ProgressCallback | None = None,
+    checkpoint_path: str | Path | None = None,
+    checkpoint_key: str | None = None,
+    max_retries: int = 0,
 ) -> ResultsTable:
     """Run all configurations in a grid.
 
@@ -110,16 +167,40 @@ def run_grid(  # ruff: ignore[too-many-arguments]
         callback: Optional progress callback invoked after each trial
             with ``(trial_index, total_trials, trial_result)``, where
             ``total_trials`` is ``n_reps * len(grid)``.
+            Recovered rows also invoke it, in original task order.
+        checkpoint_path: Optional SQLite ledger. Each completed evaluation
+            is committed before callbacks and retained across interruptions.
+            Reopening skips completed tasks with the same definition.
+        checkpoint_key: Caller-managed model/data revision. Change this when
+            instance state, external data, or other behavior changes; class
+            source alone cannot detect those changes.
+        max_retries: Additional attempts per unfinished task per invocation.
+            Zero (default) propagates the first evaluation exception.
+            Retries retain the same config and replicate id.
 
     Returns:
         ResultsTable with scored results.
 
     Raises:
-        ValueError: If ``n_reps`` is not positive.
+        ValueError: If ``n_reps`` is not positive, ``max_retries`` is negative,
+            or a checkpoint definition is incompatible or unverifiable.
     """
     if n_reps < 1:
         msg = f"run_grid: n_reps must be positive, got {n_reps}"
         raise ValueError(msg)
+    if max_retries < 0:
+        msg = "max_retries must be >= 0"
+        raise ValueError(msg)
+    ledger = (
+        _GridLedger(
+            checkpoint_path,
+            _grid_identity(
+                world, scorer, grid, observables, annotations, n_reps, checkpoint_key
+            ),
+        )
+        if checkpoint_path is not None
+        else None
+    )
 
     supports_rep = _generate_accepts_rep(world)
     tasks = [
@@ -131,9 +212,15 @@ def run_grid(  # ruff: ignore[too-many-arguments]
 
     if n_jobs == 1:
         results: list[TrialResult] = []
-        for i, (design_point, cfg, rep) in enumerate(tasks):
-            r = _run_single(world, scorer, cfg, rep=rep, supports_rep=supports_rep)
-            r.metadata["design_point"] = design_point
+        for i, task in enumerate(tasks):
+            r = _run_grid_task(
+                world,
+                scorer,
+                task,
+                supports_rep=supports_rep,
+                ledger=ledger,
+                max_retries=max_retries,
+            )
             results.append(r)
             if callback is not None:
                 callback(i, total, r)
@@ -141,27 +228,34 @@ def run_grid(  # ruff: ignore[too-many-arguments]
         from joblib import Parallel, delayed  # type: ignore[import-untyped]
 
         results = Parallel(n_jobs=n_jobs)(
-            delayed(_run_single)(world, scorer, cfg, rep=rep, supports_rep=supports_rep)
-            for _design_point, cfg, rep in tasks
+            delayed(_run_grid_task)(
+                world,
+                scorer,
+                task,
+                supports_rep=supports_rep,
+                ledger=ledger,
+                max_retries=max_retries,
+            )
+            for task in tasks
         )
-        for (design_point, _cfg, _rep), r in zip(tasks, results, strict=True):
-            r.metadata["design_point"] = design_point
         if callback is not None:
             for i, r in enumerate(results):
                 callback(i, total, r)
 
     obs_names = [o.name for o in observables]
-    score_matrix = np.array([
-        [r.scores.get(name, np.nan) for name in obs_names] for r in results
-    ])
+    score_matrix = np.array(
+        [[r.scores.get(name, np.nan) for name in obs_names] for r in results],
+        dtype=float,
+    ).reshape(len(results), len(obs_names))
 
     ann_matrix = None
     ann_names: list[str] = []
     if annotations:
         ann_names = [a.name for a in annotations]
-        ann_matrix = np.array([
-            [a.resolve(r.config) for a in annotations] for r in results
-        ])
+        ann_matrix = np.array(
+            [[a.resolve(r.config) for a in annotations] for r in results],
+            dtype=float,
+        ).reshape(len(results), len(ann_names))
 
     return ResultsTable(
         configs=[r.config for r in results],
