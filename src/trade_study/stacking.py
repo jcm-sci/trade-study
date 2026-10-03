@@ -82,42 +82,47 @@ def stack_proportional(
     score_matrix: NDArray[np.floating[Any]],
     *,
     maximize: bool = False,
+    temperature: float = 1.0,
 ) -> NDArray[np.floating[Any]]:
-    """Weight models in direct proportion to their mean score.
+    """Weight models proportionally to exponential score utilities.
 
-    Unlike :func:`stack_scores` (a linear program that puts *all* weight
-    on the single best-performing model whenever there's any nonzero gap,
-    even a noise-scale one), this scales smoothly with relative
-    performance -- useful when "how much better" should matter, not just
-    "which one is best". Two near-tied models get near-equal weights
-    here; under :func:`stack_scores` the same tiny gap can flip the
-    result between an even split and 100% on one model, since a linear
-    objective over a simplex has no reason to split weight once any
-    model is even infinitesimally ahead.
+    Mean scores are transformed using a direction-aware softmax. Near-tied
+    models receive comparable weights in either direction, including when
+    scores are zero or negative. These are heuristic ensemble weights,
+    rather than Bayesian stacking weights or calibrated probabilities.
 
     Args:
-        score_matrix: Array of shape (n_models, n_test_points) where each
-            entry is the score of model i on test point j.
-        maximize: If True, higher scores are better. If False, lower
-            scores are better; scores are inverted internally
-            (``max - score``) rather than divided, so a score of exactly
-            0 doesn't produce an unbounded weight.
+        score_matrix: Finite array of shape (n_models, n_test_points).
+        maximize: Whether higher scores are better. Default is minimize.
+        temperature: Positive, finite scale in score units. Larger values
+            spread weight more evenly; smaller values favor the best model.
+            The default is 1.0. Scale this with the scores when changing
+            their units to preserve the same weights.
 
     Returns:
-        Array of weights, shape (n_models,), summing to 1, each >= 0.
-        Falls back to a uniform split if every model scores identically
-        (nothing to distinguish them by).
-    """
-    mean_scores = np.mean(score_matrix, axis=1)
-    if not maximize:
-        mean_scores = np.max(mean_scores) - mean_scores
-    mean_scores = np.clip(mean_scores, a_min=0.0, a_max=None)
+        Non-negative float64 weights summing to 1, shape (n_models,).
+        Exactly equal mean scores receive uniform weights.
 
-    total = mean_scores.sum()
-    n_models = score_matrix.shape[0]
-    if total <= 0.0:
-        return np.full(n_models, 1.0 / n_models, dtype=np.float64)
-    return np.asarray(mean_scores / total, dtype=np.float64)
+    Raises:
+        ValueError: If scores are empty, non-finite, or not two-dimensional,
+            or temperature is not positive and finite.
+    """
+    scores = np.asarray(score_matrix, dtype=np.float64)
+    if scores.ndim != 2 or 0 in scores.shape or not np.all(np.isfinite(scores)):
+        msg = "score_matrix must be a non-empty, finite two-dimensional array"
+        raise ValueError(msg)
+    if not np.isfinite(temperature) or temperature <= 0:
+        msg = "temperature must be positive and finite"
+        raise ValueError(msg)
+
+    # Divide before summing to avoid overflowing the mean of large scores.
+    means = np.sum(scores / scores.shape[1], axis=1)
+    utility = means if maximize else -means
+    # Overflow in a very large unfavorable gap means a zero softmax weight.
+    with np.errstate(over="ignore"):
+        logits = (utility - np.max(utility)) / temperature
+    weights = np.exp(logits)
+    return np.asarray(weights / weights.sum(), dtype=np.float64)
 
 
 def ensemble_predict(
