@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - Queued, retried and imported adaptive evaluations now join NSGA-II generations and process constraints when completed; interrupted imports resume idempotently. The adaptive extra now requires Optuna >=4.5 for its public generation API (#164).
+- Strict adaptive `<`/`>` constraints now treat exact threshold equality as infeasible, matching result-table feasibility without rejecting adjacent feasible values (#167).
 
 ## [0.3.0] — 2026-10-02
 
