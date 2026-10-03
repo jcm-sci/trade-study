@@ -39,6 +39,7 @@ from .regime import (
 )
 from .runner import run_adaptive, run_grid, run_hyperband, run_successive_halving
 from .sensitivity import TableSensitivity, sensitivity_from_table
+from .sequential import ReplicationPolicy, SequentialResult, run_sequential
 from .session import AdaptiveSession, SessionTrial
 from .stacking import ensemble_predict, stack_bayesian, stack_proportional, stack_scores
 from .study import (
@@ -65,8 +66,10 @@ __all__ = [
     "Phase",
     "PredictionSupport",
     "RegimeSurrogate",
+    "ReplicationPolicy",
     "ResultsTable",
     "Scorer",
+    "SequentialResult",
     "SessionTrial",
     "Simulator",
     "Study",
@@ -98,6 +101,7 @@ __all__ = [
     "run_adaptive",
     "run_grid",
     "run_hyperband",
+    "run_sequential",
     "run_successive_halving",
     "save_results",
     "score",
