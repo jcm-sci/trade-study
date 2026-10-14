@@ -27,9 +27,12 @@ def save_results(results: ResultsTable, path: str | Path) -> None:
         path: Directory to write into (created if needed).
 
     Raises:
-        ValueError: If the destination contains a versioned bundle.
+        ValueError: If the destination contains a versioned bundle or publication.
     """
     p = Path(path)
+    if (p / "current.json").exists():
+        msg = "Legacy export cannot overwrite a published result namespace"
+        raise ValueError(msg)
     existing_meta = p / "meta.json"
     if existing_meta.exists():
         try:

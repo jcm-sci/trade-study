@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, NamedTuple, cast
 
 import numpy as np
 
+from ._publication import _commit_generation, _new_generation, _resolve_generation
 from ._version import __version__
 from .protocols import Direction, Observable, ResultsTable
 
@@ -32,12 +33,15 @@ class ResultsBundle(NamedTuple):
         provenance: Caller identities and recorded runtime versions. This does
             not reconstruct executable simulators/scorers or certify replay.
         schema_version: One for primitive JSON bundles, zero for legacy export.
+        generation: Captured published generation identifier, or None for a
+            directly loaded bundle/legacy export.
     """
 
     results: ResultsTable
     observables: tuple[Observable, ...]
     provenance: Mapping[str, object]
     schema_version: int
+    generation: str | None = None
 
 
 def _mapping(value: object, name: str) -> dict[str, object]:
@@ -301,12 +305,25 @@ def _read_v1(path: Path, meta: dict[str, object]) -> ResultsBundle:
 
 
 def _load_bundle(directory: Path) -> ResultsBundle:
+    generation = _resolve_generation(directory)
+    metadata = (
+        (directory / "meta.json").read_bytes()
+        if generation is None
+        else generation.metadata
+    )
+    if generation is not None:
+        directory = generation.directory
     meta = _mapping(
-        json.loads((directory / "meta.json").read_text(encoding="utf-8")),
+        json.loads(metadata),
         "result metadata",
     )
     if "schema_version" in meta:
-        return _read_v1(directory, meta)
+        result = _read_v1(directory, meta)
+        return (
+            result
+            if generation is None
+            else result._replace(generation=generation.identifier)
+        )
     if set(meta) - {"configs", "observable_names", "annotation_names", "metadata"}:
         msg = "Unrecognized legacy metadata; a schema_version may be missing"
         raise ValueError(msg)
@@ -317,10 +334,10 @@ def _load_bundle(directory: Path) -> ResultsBundle:
 
 
 def load_result_bundle(path: str | Path) -> ResultsBundle:
-    """Load a validated version-1 bundle or a consistent legacy export.
+    """Load a published generation, direct version-1 bundle or legacy export.
 
     Args:
-        path: Directory containing a committed meta.json and array files.
+        path: Published root or direct directory with committed result files.
 
     Returns:
         Scored table and available scientific metadata. Legacy schema version
@@ -409,3 +426,43 @@ def save_result_bundle(
         temporary.write(json.dumps(meta, indent=2, allow_nan=False))
         temporary_path = Path(temporary.name)
     temporary_path.replace(directory / "meta.json")
+
+
+def publish_result_bundle(
+    results: ResultsTable,
+    path: str | Path,
+    *,
+    observables: Sequence[Observable],
+    provenance: dict[str, object] | None = None,
+) -> Path:
+    """Publish an immutable generation with one atomic current-pointer replacement.
+
+    Existing generations and direct/legacy files stay intact. A failed update
+    leaves the previous pointer unchanged unless the new complete generation
+    has already been committed. Readers capture one pointer and check all files
+    in that selected generation. Concurrent writers use distinct destinations;
+    the last successful pointer replacement determines the current generation.
+
+    Args:
+        results: Scored data to snapshot into a new version-1 generation.
+        path: Publication root on a filesystem supporting atomic file replacement.
+        observables: Ordered directions/weights matching the score columns.
+        provenance: Primitive JSON caller identities, separate from runtime versions.
+
+    Returns:
+        Retained generation directory, usable for an explicit snapshot read.
+
+    Raises:
+        ValueError: If current publication metadata or new inputs are inconsistent.
+    """
+    root = Path(path)
+    try:
+        generation = _new_generation(root)
+        save_result_bundle(
+            results, generation, observables=observables, provenance=provenance
+        )
+        _commit_generation(root, generation)
+    except ValueError as error:
+        msg = f"Cannot publish result bundle: {error}"
+        raise ValueError(msg) from error
+    return generation
