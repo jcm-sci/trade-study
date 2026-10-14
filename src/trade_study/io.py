@@ -15,6 +15,9 @@ def save_results(results: ResultsTable, path: str | Path) -> None:
     """Save a ResultsTable to disk.
 
     Uses .npz for score arrays and .json for configs/metadata.
+    Saving into an existing directory replaces the result files and removes
+    previously saved annotations when the new table has none. Unrelated files
+    are retained. The multi-file write is not an atomic publication operation.
 
     Args:
         results: The ResultsTable to save.
@@ -26,6 +29,8 @@ def save_results(results: ResultsTable, path: str | Path) -> None:
     np.savez_compressed(p / "scores.npz", scores=results.scores)
     if results.annotations is not None:
         np.savez_compressed(p / "annotations.npz", annotations=results.annotations)
+    else:
+        (p / "annotations.npz").unlink(missing_ok=True)
 
     meta = {
         "observable_names": results.observable_names,
