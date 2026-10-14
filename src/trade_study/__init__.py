@@ -6,6 +6,7 @@ Scoring, Pareto optimization, and Bayesian stacking.
 from ._pareto import extract_front, hypervolume, igd_plus, pareto_rank
 from ._scoring import coverage_curve, score
 from ._version import __version__
+from .artifacts import ResultsBundle, load_result_bundle, save_result_bundle
 from .cache import EvaluationCache
 from .decision import PreferencePolicy, PreferenceSweep, preference_sweep
 from .design import (
@@ -72,6 +73,7 @@ __all__ = [
     "PreferenceSweep",
     "RegimeSurrogate",
     "ReplicationPolicy",
+    "ResultsBundle",
     "ResultsTable",
     "Scorer",
     "SequentialResult",
@@ -92,6 +94,7 @@ __all__ = [
     "fit_surrogate",
     "hypervolume",
     "igd_plus",
+    "load_result_bundle",
     "load_results",
     "paired_difference",
     "paired_rank",
@@ -109,6 +112,7 @@ __all__ = [
     "run_hyperband",
     "run_sequential",
     "run_successive_halving",
+    "save_result_bundle",
     "save_results",
     "score",
     "screen",

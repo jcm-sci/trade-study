@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Opt-in version-1 result bundles preserve primitive JSON configs/metadata,
+  ordered observable directions/weights and caller/runtime provenance. Readers
+  validate parallel rows, names, numeric array shapes/dtypes and per-file
+  digests, including legacy consistency checks. Initial bundle writes reserve
+  new destinations and publish metadata last; repeated-generation publication
+  remains the next increment of #172. Legacy stringifying export stays available.
+
 - An executed IVAC-oriented Jupyter notebook compares synthetic serosurvey designs across cost, overall accuracy and underserved-group accuracy, with live budget/preference changes, a 15-minute presenter route and documentation figures. Install notebook tools with the `notebook` extra.
 - Adaptive trial inspection, explicit failure reporting, and bounded retries with persistent failure reasons and retry lineage (#151).
 - Incremental grid checkpoints preserve completed design-point/replicate evaluations across interruptions, including parallel workers and incomplete `Study` phases. `run_grid(max_retries=...)` provides opt-in bounded retries (#151).

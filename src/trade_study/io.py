@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 
-from .protocols import ResultsTable
+from .artifacts import load_result_bundle
+
+if TYPE_CHECKING:
+    from .protocols import ResultsTable
 
 
 def save_results(results: ResultsTable, path: str | Path) -> None:
@@ -22,8 +25,22 @@ def save_results(results: ResultsTable, path: str | Path) -> None:
     Args:
         results: The ResultsTable to save.
         path: Directory to write into (created if needed).
+
+    Raises:
+        ValueError: If the destination contains a versioned bundle.
     """
     p = Path(path)
+    existing_meta = p / "meta.json"
+    if existing_meta.exists():
+        try:
+            existing = json.loads(existing_meta.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            # Legacy exports can have interrupted metadata writes; retain
+            # their established ability to replace an invalid legacy export.
+            existing = None
+        if isinstance(existing, dict) and "schema_version" in existing:
+            msg = "Legacy export cannot overwrite a versioned result bundle"
+            raise ValueError(msg)
     p.mkdir(parents=True, exist_ok=True)
 
     np.savez_compressed(p / "scores.npz", scores=results.scores)
@@ -49,24 +66,12 @@ def load_results(path: str | Path) -> ResultsTable:
 
     Returns:
         Reconstructed ResultsTable.
+
+    Raises:
+        ValueError: If parallel arrays/metadata or a versioned bundle are inconsistent.
     """
-    p = Path(path)
-
-    scores = np.load(p / "scores.npz")["scores"]
-
-    annotations = None
-    ann_path = p / "annotations.npz"
-    if ann_path.exists():
-        annotations = np.load(ann_path)["annotations"]
-
-    with (p / "meta.json").open() as f:
-        meta: dict[str, Any] = json.load(f)
-
-    return ResultsTable(
-        configs=meta["configs"],
-        scores=scores,
-        observable_names=meta["observable_names"],
-        annotations=annotations,
-        annotation_names=meta.get("annotation_names", []),
-        metadata=meta.get("metadata", []),
-    )
+    try:
+        return load_result_bundle(path).results
+    except ValueError as error:
+        msg = f"Cannot load study results: {error}"
+        raise ValueError(msg) from error
