@@ -6,7 +6,12 @@ Scoring, Pareto optimization, and Bayesian stacking.
 from ._pareto import extract_front, hypervolume, igd_plus, pareto_rank
 from ._scoring import coverage_curve, score
 from ._version import __version__
-from .artifacts import ResultsBundle, load_result_bundle, save_result_bundle
+from .artifacts import (
+    ResultsBundle,
+    load_result_bundle,
+    publish_result_bundle,
+    save_result_bundle,
+)
 from .cache import EvaluationCache
 from .decision import PreferencePolicy, PreferenceSweep, preference_sweep
 from .design import (
@@ -104,6 +109,7 @@ __all__ = [
     "plot_parallel",
     "plot_scores",
     "preference_sweep",
+    "publish_result_bundle",
     "recommend_bucketed_config",
     "recommend_per_regime",
     "reduce_factors",

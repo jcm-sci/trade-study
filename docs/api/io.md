@@ -15,6 +15,8 @@ rows, names, annotation dimensions and metadata cardinality. Versioned files
 also require matching digests/shapes/dtypes. For preserved directions and
 provenance, use `load_result_bundle()`.
 Legacy `save_results()` refuses a committed versioned destination.
+It also refuses published roots. Readers follow one captured current-generation
+pointer when present; see the artifact guide for publication and retention.
 
 ::: trade_study.load_results
 

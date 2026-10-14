@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Result publication retains immutable version-1 generations and selects the
+  current generation with one atomic local-filesystem pointer replacement.
+  Readers capture and validate a single generation, exposing its identifier;
+  interrupted updates preserve the previous complete data. Direct/legacy files
+  and older generations remain available, with explicit concurrency, retention
+  and durability boundaries (#172).
+
 - Opt-in version-1 result bundles preserve primitive JSON configs/metadata,
   ordered observable directions/weights and caller/runtime provenance. Readers
   validate parallel rows, names, numeric array shapes/dtypes and per-file
