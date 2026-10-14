@@ -18,6 +18,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Saving an unannotated result over an annotated result removes the stale
+  annotation file, so reloaded scores/configurations cannot inherit old
+  annotations. Overwriting annotated results still replaces their arrays and
+  schema; unrelated files are retained (#171).
+
 - Queued, retried and imported adaptive evaluations now join NSGA-II generations and process constraints when completed; interrupted imports resume idempotently. The adaptive extra now requires Optuna >=4.5 for its public generation API (#164).
 - Strict adaptive `<`/`>` constraints now treat exact threshold equality as infeasible, matching result-table feasibility without rejecting adjacent feasible values (#167).
 

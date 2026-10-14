@@ -206,3 +206,46 @@ def test_file_structure(
     save_results(results_with_annotations, tmp_path / "out")
     written = {f.name for f in (tmp_path / "out").iterdir()}
     assert written == {"scores.npz", "annotations.npz", "meta.json"}
+
+
+def test_overwrite_removes_stale_annotations(
+    tmp_path: Path,
+    results_with_annotations: ResultsTable,
+    results_without_annotations: ResultsTable,
+) -> None:
+    """Replacing a two-row annotated result must not annotate a new three-row schema."""
+    save_results(results_with_annotations, tmp_path)
+    unrelated = tmp_path / "notes.txt"
+    unrelated.write_text("retain these notes", encoding="utf-8")
+    save_results(results_without_annotations, tmp_path)
+    loaded = load_results(tmp_path)
+    assert loaded.annotations is None
+    assert loaded.annotation_names == []
+    assert not (tmp_path / "annotations.npz").exists()
+    np.testing.assert_array_equal(loaded.scores, results_without_annotations.scores)
+    assert loaded.configs == results_without_annotations.configs
+    assert loaded.observable_names == ["metric"]
+    assert loaded.metadata == []
+    assert unrelated.read_text(encoding="utf-8") == "retain these notes"
+
+
+def test_overwrite_replaces_annotations_and_schema(
+    tmp_path: Path,
+    results_with_annotations: ResultsTable,
+) -> None:
+    """Replacing annotations updates rows, columns and names alongside scores."""
+    replacement = ResultsTable(
+        configs=[{"x": 3}],
+        scores=np.array([[8.0]]),
+        observable_names=["new_score"],
+        annotations=np.array([[4.0, 5.0]]),
+        annotation_names=["new_cost", "new_time"],
+    )
+    save_results(results_with_annotations, tmp_path)
+    save_results(replacement, tmp_path)
+    loaded = load_results(tmp_path)
+    np.testing.assert_array_equal(loaded.annotations, [[4.0, 5.0]])
+    assert loaded.annotation_names == ["new_cost", "new_time"]
+    np.testing.assert_array_equal(loaded.scores, [[8.0]])
+    assert loaded.configs == [{"x": 3}]
+    assert loaded.observable_names == ["new_score"]
