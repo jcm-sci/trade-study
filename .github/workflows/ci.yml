@@ -71,10 +71,30 @@ jobs:
           --ExecutePreprocessor.timeout=60 --output serosurvey_executed.ipynb
           --output-dir /tmp examples/serosurvey_study.ipynb
 
+  wheel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: '3.12'
+          enable-cache: true
+          cache-dependency-glob: '**/pyproject.toml'
+      - name: Sync development environment
+        run: uv sync --extra dev
+      - name: Validate clean wheel with a selected development interpreter
+        run: |
+          export UV_PYTHON="$PWD/.venv/bin/python"
+          just build-all
+          uv run --no-sync python -c 'from pathlib import Path; import trade_study; assert Path(trade_study.__file__).resolve().is_relative_to(Path("src").resolve())'
+
   ci:
     name: ci
     if: always()
-    needs: [lint, test, examples]
+    needs: [lint, test, examples, wheel]
     runs-on: ubuntu-latest
     steps:
       - name: Require every validation job to succeed
@@ -82,7 +102,9 @@ jobs:
           LINT_RESULT: ${{ needs.lint.result }}
           TEST_RESULT: ${{ needs.test.result }}
           EXAMPLES_RESULT: ${{ needs.examples.result }}
+          WHEEL_RESULT: ${{ needs.wheel.result }}
         run: |
           test "$LINT_RESULT" = success
           test "$TEST_RESULT" = success
           test "$EXAMPLES_RESULT" = success
+          test "$WHEEL_RESULT" = success

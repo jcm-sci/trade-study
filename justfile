@@ -53,10 +53,9 @@ build-test:
 	CLEANROOM=$(mktemp -d)
 	trap 'rm -rf "$CLEANROOM"' EXIT
 	uv venv "$CLEANROOM/venv"
-	source "$CLEANROOM/venv/bin/activate"
 	uv build --wheel --out-dir "$CLEANROOM/dist"
-	uv pip install --no-cache "$CLEANROOM/dist/$(ls "$CLEANROOM/dist/" | grep '\.whl$')[test]"
-	python -m pytest tests -q -x
+	uv pip install --python "$CLEANROOM/venv/bin/python" --no-cache "$CLEANROOM/dist/$(ls "$CLEANROOM/dist/" | grep '\.whl$')[test]"
+	"$CLEANROOM/venv/bin/python" -m pytest tests -q -x
 	echo "Clean-room test passed."
 
 # Full pre-publish dry run.

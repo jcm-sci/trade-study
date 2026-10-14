@@ -18,6 +18,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Clean-wheel validation explicitly installs and tests with its temporary
+  interpreter, preserving the editable development environment even when
+  `UV_PYTHON` is set. A required CI job exercises that environment boundary (#180).
+
 - Saving an unannotated result over an annotated result removes the stale
   annotation file, so reloaded scores/configurations cannot inherit old
   annotations. Overwriting annotated results still replaces their arrays and

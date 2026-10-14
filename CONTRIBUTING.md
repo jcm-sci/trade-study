@@ -52,6 +52,11 @@ The complete `just ci` gate still needs to pass before committing. For release o
 packaging changes, also run `just build-all`, which builds and checks the artifacts
 and runs tests against a wheel installed in a fresh environment.
 
+Clean-wheel installation and tests select the temporary interpreter explicitly,
+including when `UV_PYTHON` selects the development environment. The required CI
+wheel job exercises that case and checks that the development import remains
+editable; shell activation alone does not choose uv's installation target.
+
 ## Code standards
 
 - Ruff uses `select = ["ALL"]` and preview rules with the minimal exceptions in
