@@ -68,6 +68,7 @@ nav:
       - Serosurvey Design (IVAC Notebook): guide/serosurvey.md
       - Monitoring Station Design: guide/monitoring.md
       - Bayesian Model Criticism: guide/bayesian.md
+      - Result Bundles: guide/result-bundles.md
   - API Reference:
       - Protocols: api/protocols.md
       - Design: api/design.md
@@ -84,4 +85,5 @@ nav:
       - Regime Surrogate: api/regime.md
       - Visualization: api/viz.md
       - I/O: api/io.md
+      - Result Artifacts: api/artifacts.md
   - Citation: citation.md
