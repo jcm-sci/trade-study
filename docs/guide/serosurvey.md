@@ -147,6 +147,27 @@ cell and rerun that cell and the figures below it. Restore the budget and edit
 the subgroup-priority weights to compare another preference. No simulation
 rerun is needed. If the budget admits no alternative, the example reports no choice.
 
+## Check whether a choice holds up
+
+Priorities are rarely settled when a survey is planned. The same sweep reports,
+for each design, the scenarios it wins, its rank range and its regret: how much
+worse it is than the best design under each priority, in the weighted,
+reference-scaled units used for ranking. The policy also declares practical
+equivalence tolerances in raw units (\$2,500 in cost, 0.25 percentage points of
+overall MAE and 0.5 points of subgroup MAE). Designs within all three tolerances
+of a scenario's winner form that scenario's acceptable set, and logistics or
+field capacity can decide among them.
+
+![Largest regret across priorities](../assets/serosurvey_robustness.png)
+
+In the saved run, the subgroup-accuracy winner (600 people in 20 communities,
+oversampled) has a practically equivalent alternative with half the participants
+and twice the communities (outlined in the priority figure). The design with the
+smallest largest regret (300 people in 20 communities, oversampled) wins no
+scenario. The tolerances are judgments to agree with stakeholders; regret and
+selection fractions describe only the supplied scenarios and are not
+probabilities that a design is best.
+
 The optional cost breakdown in the appendix supports an economics discussion:
 
 ![Cost components for the selected designs](../assets/serosurvey_costs.png)
@@ -159,9 +180,10 @@ The optional cost breakdown in the appendix supports an economics discussion:
 | 2–4 | Design factors and competing objectives |
 | 4–6 | One visible `Study` definition and a live run |
 | 6–10 | Budget and Pareto plots |
-| 10–12 | Priorities and an optional budget change |
-| 12–13 | Assumptions a real project would replace |
-| 13–15 | Discussion |
+| 10–11 | Priorities and an optional budget change |
+| 11–13 | Regret and practically equivalent designs |
+| 13–14 | Assumptions a real project would replace |
+| 14–15 | Discussion |
 
 The notebook's setup cells are collapsed, and slideshow metadata identifies
 the main narrative and its figures. The model details and cost breakdown are

@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- The serosurvey example declares raw-unit practical-equivalence tolerances and
+  reports, for each feasible Pareto design, the priority scenarios it wins, its
+  rank range, its largest regret and the scenarios for which it is practically
+  equivalent to the winner (`acceptable_sets`, `robustness_rows`,
+  `plot_robustness`); the priority figure outlines practically equivalent
+  designs. The notebook and guide add a section on choices that hold up when
+  priorities change (#187).
+
 - Fixed-sample binomial proportion intervals record counts, estimates, bounds
   and methods: Wilson without optional dependencies and conservative
   Clopper–Pearson through the lazy `stats` extra. Worst-case Wilson replicate
