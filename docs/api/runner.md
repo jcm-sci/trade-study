@@ -104,6 +104,61 @@ intervals do not inherit sequential coverage. Allocations may have unmatched
 tail replicates; explicitly select a common prefix for descriptive paired
 comparisons. Existing `run_grid(n_reps=...)` behavior is unchanged.
 
+### Fixed plans and recorded policy
+
+Set `ReplicationPolicy(..., allocation="fixed")` to collect exactly `max_reps`
+for **every** design, even when an early winner or infeasible design is apparent.
+The total budget must cover the entire plan before any simulator call. Feasibility
+is assessed only after completion, stopping reasons are `fixed_plan_complete`,
+and no winner is automatically selected. This mode uses the same bounded-mean
+Hoeffding method with one final look: replace H by 1 in the radius above.
+It does not repeatedly inspect fixed-sample Wilson/Clopper–Pearson intervals.
+`allocation="adaptive"` preserves the existing default behavior.
+
+The runner snapshots bounds/tolerances and the outer candidate/observable lists
+before evaluation; caller-owned mapping changes cannot narrow the used bounds
+after results are seen. Configuration contents, scoring definitions, means and
+scientific units must still remain fixed. Recorded assumptions are declarations,
+not verification of the simulator or authentication of a saved artifact.
+
+Each summary row retains the existing interval/stopping fields and adds a
+primitive-JSON `replication_contract` with `schema_version=1`:
+
+| Recorded field | Interpretation |
+| --- | --- |
+| Allocation, bounds, objectives, constraints, confidence | The actual used policy; constraint requests use the joint policy intervals. |
+| Planned minimum, exact fixed-plan count or null, maximum and actual replicates | Counts of simulator/scorer evaluations, not individual observations inside one evaluation. |
+| Total budget and actual evaluations | All completed evaluations across the declared design family. |
+| Look horizon, multiplicity and per-look error | The prespecified inference family; adaptive mode includes even unvisited sample counts through the horizon. |
+| Interval half-widths | Observed interval precision in raw score units, not gate power. |
+| Gate power / gate false-failure rate | Explicitly `not_assessed`, with null values. Interval coverage does not estimate either quantity. |
+| Decision status | `unresolved` for an exhausted adaptive budget/horizon, `resolved` for the existing retirement rules, or `not_assessed` for a fixed plan. This does not certify a statistical gate. |
+| Failure policy / evaluability | `abort`; available completed runs have zero failed replicates. A failed run returns no successful summary. |
+
+`replicate_unit="independent_cluster"` can declare one **independent cluster
+score** per simulator/scorer evaluation. Members may be dependent inside that
+cluster, but they never inflate the replicate count. The estimand is the mean
+declared replicate/cluster score; it is not automatically an individual-weighted
+population mean. General serial or across-cluster dependence remains unsupported.
+The default is `independent_replicate`. Cross-design common random numbers remain
+allowed because the union bound needs no independence across designs. Neither
+mode supplies a paired-contrast interval; ordinary paired post-selection
+inference does not acquire sequential coverage from this metadata.
+
+Missing, non-finite or out-of-bound scores abort instead of producing a pass with
+a reduced denominator. Simulator/scorer exceptions also propagate. This contract
+increment does not persist recoverable failed-attempt artifacts or calculate
+gate-specific power/false-failure thresholds; an aborted run is unavailable,
+and unresolved precision is not relabeled as an assessed power result. Those
+remaining obligations and optional statistical qualification stay in #176.
+
+[Howard et al. (2021)](https://arxiv.org/abs/1810.08240) and the authors'
+[confseq implementations](https://github.com/gostevehoward/confseq) describe
+mixture, stitching and betting alternatives for tighter or unbounded-horizon
+inference. They need separate domain/tuning/numerical qualification; the current
+known finite horizon and generic bounded scores do not require replacing this
+NumPy-only baseline or introducing a compiled dependency.
+
 ::: trade_study.ReplicationPolicy
 
 ::: trade_study.SequentialResult
