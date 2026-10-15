@@ -471,7 +471,9 @@ class ResultsTable:
             {
                 "design_point": dp,
                 "n_reps": len(groups[dp]),
-                "score_std": dict(zip(self.observable_names, stds[i], strict=True)),
+                "score_std": dict(
+                    zip(self.observable_names, map(float, stds[i]), strict=True)
+                ),
             }
             for i, dp in enumerate(order)
         ]
