@@ -69,12 +69,14 @@ nav:
       - Monitoring Station Design: guide/monitoring.md
       - Bayesian Model Criticism: guide/bayesian.md
       - Result Bundles: guide/result-bundles.md
+      - Fixed-sample Proportions: guide/proportion-intervals.md
   - API Reference:
       - Protocols: api/protocols.md
       - Design: api/design.md
       - Runner: api/runner.md
       - Adaptive Sessions: api/session.md
       - Paired Comparisons: api/paired.md
+      - Proportion Intervals: api/proportions.md
       - Decision Summaries: api/decision.md
       - Post-hoc Sensitivity: api/sensitivity.md
       - Study: api/study.md

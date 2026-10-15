@@ -27,6 +27,11 @@ from .design import (
 )
 from .io import load_results, save_results
 from .paired import PairedDifference, paired_difference, paired_rank
+from .proportions import (
+    ProportionInterval,
+    proportion_interval,
+    replicates_for_half_width,
+)
 from .protocols import (
     Annotation,
     Constraint,
@@ -76,6 +81,7 @@ __all__ = [
     "PredictionSupport",
     "PreferencePolicy",
     "PreferenceSweep",
+    "ProportionInterval",
     "RegimeSurrogate",
     "ReplicationPolicy",
     "ResultsBundle",
@@ -109,10 +115,12 @@ __all__ = [
     "plot_parallel",
     "plot_scores",
     "preference_sweep",
+    "proportion_interval",
     "publish_result_bundle",
     "recommend_bucketed_config",
     "recommend_per_regime",
     "reduce_factors",
+    "replicates_for_half_width",
     "run_adaptive",
     "run_grid",
     "run_hyperband",

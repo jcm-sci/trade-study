@@ -430,7 +430,13 @@ class ResultsTable:
                 raise ValueError(msg)
         return np.asarray(errors, dtype=float)
 
-    def aggregate_replicates(self) -> ResultsTable:
+    def aggregate_replicates(
+        self,
+        *,
+        proportion_observables: list[str] | None = None,
+        confidence: float = 0.95,
+        proportion_method: str = "wilson",
+    ) -> ResultsTable:
         """Collapse replicate rows into one row per design point (#112).
 
         Groups rows by their ``metadata["design_point"]`` key (set by
@@ -443,15 +449,34 @@ class ResultsTable:
         group (annotations are resolved from the config, which is identical
         across replicates of the same design point).
 
+        Args:
+            proportion_observables: Explicit raw 0/1 observable names for optional
+                fixed-sample marginal intervals. Each row must have a unique
+                non-negative integer ``rep`` within its design. Non-finite and
+                fractional values are rejected, never dropped. The caller
+                establishes independent, identically distributed trials and
+                a prespecified sample size; metadata cannot verify them.
+            confidence: Two-sided nominal level for requested intervals.
+            proportion_method: "wilson" (default) or "clopper-pearson"
+                (raises ImportError without the optional stats extra).
+
         Returns:
-            A new ResultsTable with one row per unique design point.
+            A new ResultsTable with one row per unique design point. Requested
+            intervals appear under ``metadata["proportion_intervals"][name]``;
+            DataFrame export flattens their counts, bounds and method.
 
         Raises:
             KeyError: If any row's metadata lacks a ``design_point`` key,
                 i.e. this table wasn't produced by ``run_grid(n_reps>1)``.
+            ValueError: If requested indicator intervals have invalid inputs.
         """
         import numpy as np
 
+        if proportion_observables is not None and len(self.metadata) != len(
+            self.configs
+        ):
+            msg = "Indicator summaries require matching score/config/metadata rows"
+            raise ValueError(msg)
         groups: dict[int, list[int]] = {}
         for row_idx, meta in enumerate(self.metadata):
             if "design_point" not in meta:
@@ -463,6 +488,19 @@ class ResultsTable:
                 raise KeyError(msg)
             groups.setdefault(meta["design_point"], []).append(row_idx)
 
+        from .proportions import _proportion_summaries
+
+        proportions = (
+            {}
+            if proportion_observables is None
+            else _proportion_summaries(
+                self,
+                groups,
+                proportion_observables,
+                confidence=confidence,
+                method=proportion_method,
+            )
+        )
         order = sorted(groups)
         configs = [self.configs[groups[dp][0]] for dp in order]
         means = np.array([self.scores[groups[dp]].mean(axis=0) for dp in order])
@@ -477,6 +515,9 @@ class ResultsTable:
             }
             for i, dp in enumerate(order)
         ]
+        if proportion_observables is not None:
+            for dp, meta in zip(order, metadata, strict=True):
+                meta["proportion_intervals"] = proportions[dp]
 
         annotations = (
             np.array([self.annotations[groups[dp][0]] for dp in order])
