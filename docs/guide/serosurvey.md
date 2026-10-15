@@ -27,8 +27,22 @@ Choose the environment's Python kernel, then restart it and run all cells.
 The `notebook` extra supplies JupyterLab, nbconvert, pandas, matplotlib
 and Pareto analysis without requiring the other optional modeling backends.
 Installation needs network access; the executed example uses only local
-code and synthetic data. Run from a checkout of `main`: the notebook uses
-the preference API added after the 0.3.0 release.
+code and synthetic data. The notebook needs trade-study 0.4.0 or later.
+
+Without the development tools, clone the release and install the published
+package with its notebook extra:
+
+```bash
+git clone --branch v0.4.0 https://github.com/jcm-sci/trade-study.git
+cd trade-study
+python -m venv .venv
+source .venv/bin/activate
+pip install "trade-study[notebook]==0.4.0"
+jupyter lab examples/serosurvey_study.ipynb
+```
+
+The notebook imports its companion modules from the checkout and the package
+from the environment.
 
 Clean notebook executions took about 11 seconds on the development machine,
 including kernel startup and rendering; the live study cell took under three
