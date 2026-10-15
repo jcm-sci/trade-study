@@ -6,6 +6,15 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- `ReplicationPolicy(allocation="fixed")` collects its full prespecified count
+  before one bounded-mean inference look; adaptive allocation remains the default.
+  Sequential summaries export a versioned replication contract with used bounds,
+  counts, objectives/constraints, multiplicity, stopping, precision and explicit
+  unassessed gate power/false-failure rates. Used policies are detached from
+  caller-owned mappings; cluster-score denominators and abort-on-failure behavior
+  are explicit (#176, first policy/metadata increment; broader qualification and
+  recoverable failure artifacts remain open).
+
 - `examples/serosurvey_frames.py` adds a sampling-frame design factor to the
   serosurvey example: a community survey or residual specimens from facilities
   serving the same communities, with invented facility and specimen costs and a

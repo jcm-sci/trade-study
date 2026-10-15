@@ -248,7 +248,8 @@ existing results table through a validated surrogate.
 Version 0.4.0 adds decision reporting (`preference_sweep()` with regret,
 practical equivalence and optional paired uncertainty), fixed-sample proportion
 intervals and replicate sizing, versioned result bundles with provenance,
-sequential replication (`run_sequential()`), evaluation caching, incremental
+sequential replication (`run_sequential()`, with explicit fixed/adaptive policy
+and recorded counts/uncertainty assumptions), evaluation caching, incremental
 grid checkpoints with bounded retries, grouped surrogate validation with
 support diagnostics, and the IVAC serosurvey notebook. The `adaptive` extra now
 requires Optuna 4.5 or later, and strict `<`/`>` adaptive constraints treat

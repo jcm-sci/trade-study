@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from numbers import Integral
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -11,6 +12,8 @@ from .protocols import Direction, ResultsTable
 from .runner import _generate_accepts_rep, _run_single
 
 if TYPE_CHECKING:
+    from typing import Literal
+
     from numpy.typing import NDArray
 
     from .protocols import Constraint, Observable, Scorer, Simulator, TrialResult
@@ -22,12 +25,16 @@ class ReplicationPolicy:
 
     Attributes:
         score_bounds: Known almost-sure bounds in raw observable units.
-        min_reps: Initial evaluations per design.
-        max_reps: Maximum evaluations per design and inference horizon.
+        min_reps: Initial adaptive batch per design; must not exceed max_reps.
+        max_reps: Adaptive per-design maximum/horizon, or exact fixed-plan count.
         max_evaluations: Total simulator/scorer evaluations allowed.
         confidence: Joint coverage across all designs, observables and looks.
         equivalence: Practical-equivalence tolerances in raw observable units;
             omitted observables use zero.
+        allocation: Adaptive retirement/allocation, or a fixed plan collecting
+            exactly max_reps for every design before any inference look.
+        replicate_unit: Independent simulator/scorer evaluations, or independent
+            cluster scores. Cluster members are not additional replicates.
     """
 
     score_bounds: dict[str, tuple[float, float]]
@@ -36,6 +43,10 @@ class ReplicationPolicy:
     max_evaluations: int = 1000
     confidence: float = 0.95
     equivalence: dict[str, float] = field(default_factory=dict)
+    allocation: Literal["adaptive", "fixed"] = "adaptive"
+    replicate_unit: Literal["independent_replicate", "independent_cluster"] = (
+        "independent_replicate"
+    )
 
 
 @dataclass(frozen=True)
@@ -73,12 +84,7 @@ def _validate(
     if not names or len(names) != len(observables):
         msg = "Sequential replication requires designs and distinct observables"
         raise ValueError(msg)
-    if policy.min_reps < 1 or policy.max_reps < policy.min_reps:
-        msg = "Require 1 <= min_reps <= max_reps"
-        raise ValueError(msg)
-    if policy.max_evaluations < n_designs * policy.min_reps:
-        msg = "max_evaluations must cover min_reps for every design"
-        raise ValueError(msg)
+    _validate_allocation(policy, n_designs)
     if not 0 < policy.confidence < 1:
         msg = "confidence must be strictly between zero and one"
         raise ValueError(msg)
@@ -95,6 +101,74 @@ def _validate(
         msg = "equivalence requires nonnegative finite tolerances for known observables"
         raise ValueError(msg)
     _validate_constraints(constraints, names, policy.confidence)
+
+
+def _validate_allocation(policy: ReplicationPolicy, n_designs: int) -> None:
+    """Require a supported allocation and complete prespecified integer budget.
+
+    Raises:
+        ValueError: Counts, allocation, replicate unit or available budget are invalid.
+    """
+    counts = (policy.min_reps, policy.max_reps, policy.max_evaluations)
+    if any(
+        isinstance(value, bool) or not isinstance(value, Integral) for value in counts
+    ):
+        msg = "min_reps, max_reps and max_evaluations must be integers, not booleans"
+        raise ValueError(msg)
+    if policy.min_reps < 1 or policy.max_reps < policy.min_reps:
+        msg = "Require 1 <= min_reps <= max_reps"
+        raise ValueError(msg)
+    if policy.max_evaluations < n_designs * policy.min_reps:
+        msg = "max_evaluations must cover min_reps for every design"
+        raise ValueError(msg)
+    if policy.allocation not in {"adaptive", "fixed"} or policy.replicate_unit not in {
+        "independent_replicate",
+        "independent_cluster",
+    }:
+        msg = "Unsupported allocation or replicate_unit policy"
+        raise ValueError(msg)
+    if (
+        policy.allocation == "fixed"
+        and policy.max_evaluations < n_designs * policy.max_reps
+    ):
+        msg = (
+            "Fixed allocation requires max_evaluations to cover every planned replicate"
+        )
+        raise ValueError(msg)
+
+
+def _snapshot_policy(policy: ReplicationPolicy) -> ReplicationPolicy:
+    """Detach the validated run definition from caller-owned mutable mappings.
+
+    Returns:
+        Used policy with detached bounds/tolerances and primitive numeric fields.
+    """
+    return replace(
+        policy,
+        score_bounds={
+            name: (float(lower), float(upper))
+            for name, (lower, upper) in policy.score_bounds.items()
+        },
+        equivalence={name: float(value) for name, value in policy.equivalence.items()},
+        min_reps=int(policy.min_reps),
+        max_reps=int(policy.max_reps),
+        max_evaluations=int(policy.max_evaluations),
+        confidence=float(policy.confidence),
+    )
+
+
+def _looks(policy: ReplicationPolicy) -> int:
+    """Return the prespecified number of inference looks per score stream."""
+    return 1 if policy.allocation == "fixed" else policy.max_reps
+
+
+def _interval_method(policy: ReplicationPolicy) -> str:
+    """Return the method name for the actually used look family."""
+    return (
+        "fixed_replicates_hoeffding_union_bound"
+        if policy.allocation == "fixed"
+        else "finite_horizon_hoeffding_union_bound"
+    )
 
 
 def _validate_constraints(
@@ -137,7 +211,11 @@ def _evaluate(
             raise ValueError(msg)
     trial.metadata.update({
         "design_point": design_point,
-        "allocation": "initial" if rep < policy.min_reps else "ambiguous",
+        "allocation": "fixed"
+        if policy.allocation == "fixed"
+        else "initial"
+        if rep < policy.min_reps
+        else "ambiguous",
     })
     allocation.trials[design_point].append(trial)
     allocation.evaluations += 1
@@ -151,7 +229,7 @@ def _intervals(
         for rows in allocation.trials
     ])
     bounds = np.array([policy.score_bounds[o.name] for o in observables])
-    multiplicity = len(allocation.trials) * len(observables) * policy.max_reps
+    multiplicity = len(allocation.trials) * len(observables) * _looks(policy)
     radius = (bounds[:, 1] - bounds[:, 0]) * np.sqrt(
         np.log(2 * multiplicity / (1 - policy.confidence))
         / (2 * allocation.counts[:, None])
@@ -262,6 +340,7 @@ def _result(
     intervals: NDArray[np.float64],
     observables: list[Observable],
     policy: ReplicationPolicy,
+    constraints: list[Constraint],
 ) -> SequentialResult:
     names = [o.name for o in observables]
     rows = [t for trials in allocation.trials for t in trials]
@@ -274,6 +353,7 @@ def _result(
         metadata=[{"wall_seconds": t.wall_seconds, **t.metadata} for t in rows],
     )
     summary = raw.aggregate_replicates()
+    method = _interval_method(policy)
     for index, meta in enumerate(summary.metadata):
         meta.update({
             "stopping_reason": allocation.reasons[index],
@@ -282,7 +362,10 @@ def _result(
                 name: intervals[index, j].tolist() for j, name in enumerate(names)
             },
             "confidence": policy.confidence,
-            "interval_method": "finite_horizon_hoeffding_union_bound",
+            "interval_method": method,
+            "replication_contract": _contract_metadata(
+                allocation, intervals[index], observables, policy, index, constraints
+            ),
         })
     return SequentialResult(
         raw,
@@ -293,6 +376,113 @@ def _result(
         allocation.feasibility,
         policy,
     )
+
+
+def _contract_metadata(
+    allocation: _Allocation,
+    intervals: NDArray[np.float64],
+    observables: list[Observable],
+    policy: ReplicationPolicy,
+    index: int,
+    constraints: list[Constraint],
+) -> dict[str, Any]:
+    """Record the used inference family separately from power and gate errors.
+
+    Returns:
+        Versioned primitive metadata for completed, fully evaluable runs. A failed
+        evaluation aborts rather than returning a reduced-denominator success.
+    """
+    names = [observable.name for observable in observables]
+    multiplicity = len(allocation.trials) * len(names) * _looks(policy)
+    return {
+        "schema_version": 1,
+        "allocation_policy": policy.allocation,
+        "planned_min_reps": policy.min_reps,
+        "planned_reps": policy.max_reps if policy.allocation == "fixed" else None,
+        "max_reps": policy.max_reps,
+        "actual_reps": len(allocation.trials[index]),
+        "max_evaluations": policy.max_evaluations,
+        "actual_evaluations": allocation.evaluations,
+        "stopping_reason": allocation.reasons[index],
+        "replicate_unit": policy.replicate_unit,
+        "estimand": "mean_score_per_declared_replicate",
+        "confidence_scope": "joint_design_observable_look_family",
+        "confidence": policy.confidence,
+        "interval_method": _interval_method(policy),
+        "objectives": [
+            {"name": observable.name, "direction": observable.direction.value}
+            for observable in observables
+        ],
+        "constraints": [
+            {
+                "name": constraint.name,
+                "observable": constraint.observable,
+                "op": constraint.op,
+                "threshold": float(constraint.threshold),
+                "requested_confidence": None
+                if constraint.confidence is None
+                else float(constraint.confidence),
+            }
+            for constraint in constraints
+        ],
+        "constraint_interval_policy": "joint_policy_intervals",
+        "n_designs": len(allocation.trials),
+        "n_observables": len(names),
+        "max_looks_per_stream": _looks(policy),
+        "multiplicity": multiplicity,
+        "per_look_error": (1.0 - policy.confidence) / multiplicity,
+        "interval_half_widths": {
+            name: float((bounds[1] - bounds[0]) / 2)
+            for name, bounds in zip(names, intervals, strict=True)
+        },
+        "gate_power": {"status": "not_assessed", "value": None},
+        "gate_false_failure_rate": {"status": "not_assessed", "value": None},
+        "failure_policy": "abort",
+        "failed_reps": 0,
+        "evaluability": "available",
+        "decision_status": "not_assessed"
+        if policy.allocation == "fixed"
+        else "unresolved"
+        if allocation.reasons[index] in {"max_reps", "budget_exhausted"}
+        else "resolved",
+        "score_bounds": {
+            name: [lower, upper] for name, (lower, upper) in policy.score_bounds.items()
+        },
+        "equivalence": dict(policy.equivalence),
+        "assumptions": [
+            "fixed_candidate_family",
+            "independent_replicates_with_fixed_mean_within_design",
+            "prespecified_almost_sure_score_bounds",
+            "no_cross_design_independence_required",
+        ],
+        "paired_contrast_coverage": "not_supplied",
+    }
+
+
+def _run_fixed(
+    world: Simulator,
+    scorer: Scorer,
+    grid: list[dict[str, Any]],
+    observables: list[Observable],
+    policy: ReplicationPolicy,
+    constraints: list[Constraint],
+) -> SequentialResult:
+    """Execute the entire prespecified plan before its only inference look.
+
+    Returns:
+        A completed fixed-count baseline; no early winner/retirement is inferred.
+    """
+    allocation = _Allocation(
+        [[] for _ in grid], ["fixed_plan_complete"] * len(grid), ["unknown"] * len(grid)
+    )
+    for _rep in range(policy.max_reps):
+        for index, config in enumerate(grid):
+            _evaluate(allocation, world, scorer, config, index, policy)
+    intervals = _intervals(allocation, observables, policy)
+    allocation.feasibility = _feasibility(
+        intervals, constraints, [observable.name for observable in observables]
+    )
+    return _result(allocation, intervals, observables, policy, constraints)
 
 
 def run_sequential(
@@ -311,7 +501,8 @@ def run_sequential(
         scorer: Scorer returning finite values within declared score bounds.
         grid: Fixed candidate designs; adaptive proposal selection is excluded.
         observables: Objectives with directions; scores and bounds use raw units.
-        policy: Explicit budgets, score bounds, joint confidence and equivalence.
+        policy: Explicit budgets, bounds, confidence and adaptive/fixed allocation.
+            The validated used policy is snapshotted before simulator calls.
         constraints: Monotone feasibility constraints on scored observables.
             Simultaneous policy intervals replace normal standard-error bounds.
 
@@ -326,17 +517,26 @@ def run_sequential(
     Notes:
         Coverage requires independent replicates with a fixed mean within each
         design and known almost-sure score bounds. Dependence across designs
-        through common random numbers is allowed. Intervals use Hoeffding bounds
-        and a union bound over all designs, observables and sample sizes through
-        max_reps, permitting data-dependent allocation and stopping. These
-        conservative intervals do not turn ordinary post-selection paired
-        comparisons into sequentially valid inference.
+        through common random numbers is allowed. Adaptive intervals use Hoeffding
+        bounds and a union bound over all designs, observables and sample sizes
+        through max_reps, permitting data-dependent allocation and stopping.
+        Fixed mode collects every planned replicate and uses one final look;
+        those intervals supply no interim-look guarantee. Independent clusters
+        can supply one score per replicate, without counting members separately.
+        Gate power and false-failure rates are not assessed by these intervals.
+        Missing/non-finite/out-of-bound scores abort rather than reduce the
+        denominator. Returned metadata records the used policy and actual counts;
+        ordinary post-selection paired intervals gain no sequential coverage.
     """
+    grid, observables = list(grid), list(observables)
     if not grid:
         msg = "Sequential replication requires at least one design"
         raise ValueError(msg)
     constraints = list(constraints or [])
     _validate(policy, observables, constraints, len(grid))
+    policy = _snapshot_policy(policy)
+    if policy.allocation == "fixed":
+        return _run_fixed(world, scorer, grid, observables, policy, constraints)
     allocation = _Allocation(
         [[] for _ in grid], [""] * len(grid), ["unknown"] * len(grid)
     )
@@ -359,4 +559,4 @@ def run_sequential(
         _evaluate(allocation, world, scorer, grid[index], index, policy)
         intervals = _intervals(allocation, observables, policy)
         active = _classify(allocation, intervals, observables, constraints, policy)
-    return _result(allocation, intervals, observables, policy)
+    return _result(allocation, intervals, observables, policy, constraints)
