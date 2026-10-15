@@ -30,10 +30,11 @@ Installation needs network access; the executed example uses only local
 code and synthetic data. Run from a checkout of `main`: the notebook uses
 the preference API added after the 0.3.0 release.
 
-Clean notebook executions took about six to eight seconds on the development
-machine, including kernel startup and rendering. The companion script took
-about two seconds for 19,800 evaluations and four figures. These measurements
-exclude dependency installation; check your presentation machine before the talk.
+Clean notebook executions took about 11 seconds on the development machine,
+including kernel startup and rendering; the live study cell took under three
+seconds. The companion script took about seven seconds for 19,800 evaluations,
+the paired comparisons and seven figures. These measurements exclude dependency
+installation; check your presentation machine before the talk.
 
 Saved notebook outputs provide a fallback without running code. Export them
 to HTML for an additional presentation copy:
@@ -85,10 +86,24 @@ Compare 18 designs:
 
 Allocation applies to both participants and communities. Within each group,
 participants are distributed as evenly as possible, keeping exact totals.
-Independent community probabilities follow a Beta distribution centered on
-the group mean, with illustrative within-community correlation 0.06;
-participant counts then follow a binomial model. The estimand is the fixed
-group mean, not the realized mean in the sampled communities.
+
+Each simulated replicate draws one fictional population: 320 communities in
+the larger group and 80 in the underserved group, whose prevalences follow a
+Beta distribution centered on the group mean with illustrative
+within-community correlation 0.06. Every design surveys that same population.
+It visits the first communities in each group's list, which is a random
+sample because the list is in random order, and tests the first participants
+in each; a participant has antibodies with the community's probability. Each
+participant and community keeps the same random draw in every design, so
+smaller designs are nested in larger ones and differences between designs are
+estimated replicate by replicate (common random numbers). Replicates are
+independent of one another, and each design's estimates have the same
+distribution as under independent sampling. Communities are treated as large
+relative to the sample, with no finite-population correction within them.
+The estimand is the realized prevalence of each group in the replicate's
+population (the mean over all its communities), as in a survey of a real
+population; `SurveyWorld(estimand="fixed")` targets the fixed group means
+instead.
 
 The overall prevalence estimator uses population weights of 80:20 for both
 allocation strategies. Oversampling does not change the population composition.
@@ -166,9 +181,9 @@ field capacity can decide among them.
 
 ![Largest regret across priorities](../assets/serosurvey_robustness.png)
 
-In the saved run, the subgroup-accuracy winner (600 people in 20 communities,
-oversampled) has a practically equivalent alternative with half the participants
-and twice the communities (outlined in the priority figure). The design with the
+In the saved run, the subgroup-accuracy winner (300 people in 40 communities,
+oversampled) has a practically equivalent alternative with twice the
+participants and half the communities (outlined in the priority figure). The design with the
 smallest largest regret (300 people in 20 communities, oversampled) wins no
 scenario. The tolerances are judgments to agree with stakeholders; regret and
 selection fractions describe only the supplied scenarios and are not
@@ -185,17 +200,46 @@ each design; the indicator is reported and does not enter the priority weights.
 
 ![Share of surveys within the precision target](../assets/serosurvey_precision.png)
 
-In the saved run, the cost-first design meets the target in 44% of simulated
+In the saved run, the cost-first design meets the target in 34% of simulated
 surveys, while the subgroup-accuracy winner and its practically equivalent
-alternative meet it in 76% and 75%. The intervals are fixed-sample marginal
+alternative meet it in 75% and 73%. The intervals are fixed-sample marginal
 intervals for the simulation under this model. They are not the uncertainty of
 a real survey's estimate, they carry no guarantee under optional stopping, and
 two marginal intervals do not give an interval for the difference between two
-designs, which needs a paired analysis.
+designs, which needs the paired analysis below.
 
 The optional cost breakdown in the appendix supports an economics discussion:
 
 ![Cost components for the selected designs](../assets/serosurvey_costs.png)
+
+## Is oversampling worth it?
+
+Because every design surveys the same simulated population in each replicate,
+two designs can be compared survey by survey. `paired_difference()` averages
+the per-replicate differences and gives a paired bootstrap interval. Before
+running, the example fixes one comparison (`PAIRED_SIZE`): oversampling
+against proportional allocation with 600 participants in 20 communities.
+
+In the saved run, oversampling at that size costs \$4,500 more, lowers
+subgroup MAE by 2.3 percentage points (95% paired interval 2.1 to 2.6), raises
+overall MAE by 0.1 points (0.003 to 0.19) and raises the share of surveys
+within the ±5-point target by 25 points (21 to 29). Pairing reduces the
+Monte Carlo variance of these differences to between 60% and 89% of what
+independent runs with the same per-design distributions would give.
+
+![Paired effect of oversampling at each size](../assets/serosurvey_allocation.png)
+
+The figure repeats the comparison at every size. Those intervals are per
+comparison and not adjusted for multiplicity; sizes where oversampling exceeds
+the budget are faded. `preference_sweep(paired_reference=...)` also compares
+every feasible design with a reference fixed in advance (`REFERENCE_DESIGN`,
+the proportional design at the same size), with intervals that hold jointly
+across designs and objectives (Bonferroni). Against that reference, the two
+subgroup-accuracy choices (300 people in 40 communities and 600 in 20, both
+oversampled) lower subgroup MAE by 2.5 and 2.3 points. The notebook requests
+the reference comparison only when the reference is within the budget. Like
+the other intervals in the example, paired intervals describe simulation
+precision under this model.
 
 ## Does the context change the answer?
 
@@ -210,7 +254,7 @@ intervals, are saved as a version-1 result bundle in
 `examples/data/serosurvey_contexts/` with provenance: SHA-256 of the model and
 script, the contexts, seed, replicate count, objectives and decision settings.
 The notebook loads and validates the bundle instead of rerunning. To regenerate
-it and the figure (about ten seconds):
+it and the figure (about 20 seconds):
 
 ```bash
 uv run --extra notebook python -m examples.serosurvey_contexts --overwrite
@@ -220,11 +264,13 @@ uv run --extra notebook python -m examples.serosurvey_contexts --overwrite
 
 In the saved run, the cost-first and overall-accuracy winners are the same in
 all nine contexts. Under the subgroup-accuracy priority, the winner changes
-mainly with clustering: at intracluster correlation 0.12, 300 people in 40
-communities replaces 600 people in 20 communities. The baseline context
-reproduces the main notebook's results exactly, because it uses the same seed
-and replicate streams. Random streams depend on the seed, replicate and design,
-so each design sees the same streams in every context. The grid has nine
+only with clustering: at intracluster correlation 0.02, 600 people in 20
+communities wins, and at 0.06 and 0.12, 300 people in 40 communities wins, at
+every underserved prevalence. The baseline context reproduces the main
+notebook's results exactly, because it uses the same seed and replicate
+populations. Random streams depend only on the seed and replicate, so every
+design in every context uses the same participant draws; community prevalences
+come from the same stream under each context's values. The grid has nine
 points; interpolating between them (for example with `fit_regime_surrogate`
 and its support warnings) is a possible extension.
 
@@ -242,7 +288,8 @@ and its support warnings) is a possible extension.
 | 14–15 | Discussion |
 
 For a 20-minute version, add the precision target (section 7 of the notebook)
-after the regret segment.
+after the regret segment. The paired comparison of oversampling (section 8) can
+serve as a backup slide for questions about allocation.
 
 The notebook's setup cells are collapsed, and slideshow metadata identifies
 the main narrative and its figures. The model details and cost breakdown are

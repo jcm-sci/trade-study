@@ -18,7 +18,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import shutil
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from itertools import pairwise, product
 from operator import itemgetter
 from pathlib import Path
@@ -127,12 +127,14 @@ def split_config(config: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]
 class ContextWorld:
     """Simulate a design within the context named by its configuration.
 
-    The other group's prevalence stays at the base value. Random streams depend
-    on the seed, replicate and design (as in SurveyWorld), not on the context,
-    so a design sees the same streams in every context.
+    The other group's prevalence stays at the base value. As in SurveyWorld,
+    random streams depend only on the seed and replicate, so every design in
+    every context uses the same participant draws for a replicate; community
+    prevalences are drawn from the same stream under the context's values.
 
     Attributes:
-        base: Population whose other-group prevalence and seed are kept.
+        base: Population whose other-group prevalence, seed, estimand and
+            sampling limits are kept.
     """
 
     base: SurveyWorld = field(default_factory=lambda: SurveyWorld(seed=CONTEXT_SEED))
@@ -144,15 +146,15 @@ class ContextWorld:
             context: Correlation and underserved prevalence.
 
         Returns:
-            A SurveyWorld with the context's values and the base seed.
+            The base SurveyWorld with the context's values.
         """
-        return SurveyWorld(
+        return replace(
+            self.base,
             prevalence=(
                 self.base.prevalence[0],
                 float(context["underserved_prevalence"]),
             ),
             correlation=float(context["correlation"]),
-            seed=self.base.seed,
         )
 
     def generate(self, config: dict[str, Any], *, rep: int = 0) -> tuple[Any, Any]:
@@ -163,7 +165,7 @@ class ContextWorld:
             rep: Nonnegative replicate id.
 
         Returns:
-            Target group means and one survey's group estimates.
+            Target group prevalences and one survey's group estimates.
         """
         context, design = split_config(config)
         return self.world(context).generate(design, rep=rep)
@@ -185,7 +187,7 @@ class ContextScorer:
         """Score one survey; costs depend on the design only.
 
         Args:
-            truth: Target group means.
+            truth: Target group prevalences.
             observations: Simulated group estimates and field-work counts.
             config: Context and design values.
 
@@ -231,6 +233,7 @@ def bundle_provenance(n_reps: int) -> dict[str, object]:
     Returns:
         Primitive JSON provenance for save_result_bundle.
     """
+    base = ContextWorld().base
     here = Path(__file__).resolve().parent
     sources = {
         name: hashlib.sha256((here / name).read_bytes()).hexdigest()
@@ -243,11 +246,20 @@ def bundle_provenance(n_reps: int) -> dict[str, object]:
         "contexts": {
             "correlation": list(CORRELATIONS),
             "underserved_prevalence": list(UNDERSERVED_PREVALENCES),
-            "other_prevalence": float(SurveyWorld().prevalence[0]),
+            "other_prevalence": float(base.prevalence[0]),
         },
         "designs": list(DESIGN_KEYS),
         "seed": CONTEXT_SEED,
-        "random_streams": "seed, replicate and design; shared across contexts",
+        "random_streams": (
+            "seed and replicate; one population per replicate shared by all"
+            " designs, participant draws shared across contexts"
+        ),
+        "population": {
+            "estimand": base.estimand,
+            "communities_per_group": list(base.pool),
+            "sampled_cap": base.sampled_cap,
+            "per_community_cap": base.per_community_cap,
+        },
         "replicates_per_design": n_reps,
         "indicator": {
             "name": INDICATOR,

@@ -78,6 +78,10 @@ def test_context_world_delegates_to_survey_world() -> None:
     assert ContextScorer().score(truth, outcome, config) == SurveyScorer().score(
         truth, outcome, design
     )
+    fixed = ContextWorld(SurveyWorld(seed=CONTEXT_SEED, estimand="fixed"))
+    fixed_truth, fixed_outcome = fixed.generate(config, rep=3)
+    np.testing.assert_array_equal(fixed_truth, (0.9, 0.55))
+    np.testing.assert_array_equal(fixed_outcome.prevalence, outcome.prevalence)
 
 
 def test_run_contexts_refuses_too_few_replicates() -> None:
@@ -128,7 +132,7 @@ def test_recommendations_cover_every_context_and_priority(
     assert baseline == {
         "Cost first": "300/10/P",
         "Overall accuracy": "600/40/P",
-        "Subgroup accuracy": "600/20/O",
+        "Subgroup accuracy": "300/40/O",
     }
     for row in rows:
         assert row["low"] <= row["within_target"] <= row["high"]
