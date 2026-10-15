@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import ast
+import json
+import re
+from pathlib import Path
 from typing import Any
 
 import matplotlib.pyplot as plt
@@ -9,18 +13,29 @@ import numpy as np
 import pytest
 
 from examples.serosurvey_study import (
+    EQUIVALENCE,
     GROUP_WEIGHTS,
+    PRIORITIES,
     SurveyCosts,
     SurveyOutcome,
     SurveyScorer,
     SurveyWorld,
+    acceptable_sets,
     allocation_counts,
     plot_priorities,
+    plot_robustness,
     preference_policy,
+    robustness_rows,
     survey_factors,
     survey_observables,
 )
-from trade_study import Constraint, build_grid, preference_sweep, run_grid
+from trade_study import (
+    Constraint,
+    PreferenceSweep,
+    build_grid,
+    preference_sweep,
+    run_grid,
+)
 
 
 def test_allocations_preserve_exact_totals() -> None:
@@ -140,3 +155,80 @@ def test_financial_costs_are_additive_and_nonnegative() -> None:
     assert sum(components.values()) == 16_000
     with pytest.raises(ValueError, match="finite and nonnegative"):
         SurveyCosts(setup=-1)
+
+
+def _sweep(budget: float) -> PreferenceSweep:
+    grid = build_grid(survey_factors(), method="full")
+    observables = survey_observables()
+    raw = run_grid(SurveyWorld(), SurveyScorer(), grid, observables, n_reps=8)
+    return preference_sweep(
+        raw,
+        observables,
+        policy=preference_policy(),
+        constraints=[Constraint("budget", "cost_usd", "<=", budget)],
+    )
+
+
+def test_policy_declares_positive_raw_unit_tolerances() -> None:
+    policy = preference_policy()
+    assert policy.equivalence == EQUIVALENCE
+    assert set(EQUIVALENCE) == set(PRIORITIES["Cost first"])
+    assert all(value > 0 for value in EQUIVALENCE.values())
+
+
+def test_notebook_shows_the_same_tolerances() -> None:
+    notebook = Path(__file__).resolve().parents[1] / "examples/serosurvey_study.ipynb"
+    cells = json.loads(notebook.read_text(encoding="utf-8"))["cells"]
+    source = next(
+        "".join(cell["source"])
+        for cell in cells
+        if cell["cell_type"] == "code" and "equivalence=" in "".join(cell["source"])
+    )
+    block = re.search(r"equivalence=(\{.*?\})", source, re.DOTALL)
+    assert block is not None
+    assert ast.literal_eval(block.group(1)) == EQUIVALENCE
+
+
+def test_acceptable_sets_hold_winners_within_tolerance() -> None:
+    report = _sweep(40_000)
+    sets = acceptable_sets(report)
+    assert list(sets) == list(PRIORITIES)
+    names = report.summary.observable_names
+    for ranks, members in zip(report.ranks, sets.values(), strict=True):
+        winners = np.flatnonzero(ranks == 1)
+        assert set(winners) <= set(members)
+        assert report.feasible[members].all()
+        for member in members:
+            gaps = np.abs(
+                report.summary.scores[member] - report.summary.scores[winners]
+            )
+            tolerance = np.array([EQUIVALENCE[name] for name in names])
+            assert np.any(np.all(gaps <= tolerance, axis=1))
+
+
+def test_robustness_rows_are_sorted_and_consistent_with_ranks() -> None:
+    report = _sweep(40_000)
+    rows = robustness_rows(report)
+    assert len(rows) == int(report.pareto.sum())
+    costs = [row["cost_usd"] for row in rows]
+    assert costs == sorted(costs)
+    for row in rows:
+        index = int(row["design"][1:]) - 1
+        assert report.pareto[index]
+        assert row["max_regret"] >= 0
+        for name, ranks in zip(PRIORITIES, report.ranks, strict=True):
+            assert (name in row["wins"]) == (ranks[index] == 1)
+            if ranks[index] == 1:
+                assert name in row["acceptable_for"]
+    figure = plot_robustness(report)
+    assert len(figure.axes[0].patches) == len(rows)
+    plt.close(figure)
+
+
+def test_infeasible_budget_has_no_robustness_rows() -> None:
+    report = _sweep(1)
+    assert robustness_rows(report) == []
+    assert all(members == [] for members in acceptable_sets(report).values())
+    figure = plot_robustness(report)
+    assert figure.axes[0].texts[0].get_text() == "No design meets the budget"
+    plt.close(figure)

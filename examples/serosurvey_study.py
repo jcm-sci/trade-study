@@ -8,6 +8,7 @@ Run: uv run --extra notebook python examples/serosurvey_study.py
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from operator import itemgetter
 from pathlib import Path
 from time import perf_counter
 from typing import TYPE_CHECKING, Any
@@ -15,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.lines import Line2D
+from matplotlib.patches import Rectangle
 
 from trade_study import (
     Constraint,
@@ -56,6 +58,12 @@ PRIORITIES = {
     },
 }
 BUDGET = 40_000.0
+# Differences this small are treated as practically equal (illustrative judgments).
+EQUIVALENCE = {
+    "cost_usd": 2_500.0,
+    "overall_error_pp": 0.25,
+    "underserved_error_pp": 0.5,
+}
 
 
 def allocation_counts(
@@ -301,6 +309,7 @@ def preference_policy() -> PreferencePolicy:
 
     Returns:
         An explicit policy; anchors are scaling choices, not eligibility limits.
+        Practical-equivalence tolerances are raw-unit judgments (EQUIVALENCE).
     """
     return PreferencePolicy(
         weights=list(PRIORITIES.values()),
@@ -310,6 +319,7 @@ def preference_policy() -> PreferencePolicy:
             "overall_error_pp": (0, 4),
             "underserved_error_pp": (0, 10),
         },
+        equivalence=dict(EQUIVALENCE),
     )
 
 
@@ -339,6 +349,72 @@ def plot_population(world: SurveyWorld) -> Figure:
 
 def _selected_indices(report: PreferenceSweep) -> NDArray[np.intp]:
     return np.flatnonzero(np.any(report.ranks == 1, axis=0))
+
+
+def acceptable_sets(report: PreferenceSweep) -> dict[str, list[int]]:
+    """Return the designs practically equivalent to each scenario's winner.
+
+    Two designs are practically equivalent when every objective differs by at
+    most the policy's raw-unit tolerance. The relation is pairwise and need not
+    be transitive, so each set is anchored on the scenario's winners.
+
+    Args:
+        report: Preference report with its equivalence matrix.
+
+    Returns:
+        Feasible design indices by priority scenario, winners included; empty
+        when no design is feasible.
+    """
+    sets: dict[str, list[int]] = {}
+    for name, ranks in zip(PRIORITIES, report.ranks, strict=True):
+        winners = np.flatnonzero(ranks == 1)
+        members = np.any(report.equivalent[winners], axis=0)
+        sets[name] = np.flatnonzero(members).tolist()
+    return sets
+
+
+def robustness_rows(report: PreferenceSweep) -> list[dict[str, Any]]:
+    """Summarize how each feasible Pareto design fares across the priorities.
+
+    Regret is a design's weighted, reference-scaled loss minus the scenario
+    winner's loss. The maximum over the supplied scenarios shows how much a
+    choice can lose if priorities differ; it describes these scenarios only.
+
+    Args:
+        report: Preference report under the named scenarios.
+
+    Returns:
+        One row per feasible Pareto design, sorted by cost, with the scenarios
+        it wins, its rank range, its largest regret and the scenarios whose
+        acceptable set includes it.
+    """
+    acceptable = acceptable_sets(report)
+    indices = np.flatnonzero(report.pareto)
+    indices = indices[np.argsort(report.summary.scores[indices, 0], kind="stable")]
+    rows: list[dict[str, Any]] = []
+    for i in indices:
+        decision = report.summary.metadata[i]["decision"]
+        cost, overall, subgroup = report.summary.scores[i]
+        wins = [
+            name
+            for name, ranks in zip(PRIORITIES, report.ranks, strict=True)
+            if ranks[i] == 1
+        ]
+        near = [name for name, members in acceptable.items() if i in members]
+        rows.append({
+            "design": f"D{i + 1:02d}",
+            **report.summary.configs[i],
+            "cost_usd": float(cost),
+            "overall_mae_pp": float(overall),
+            "subgroup_mae_pp": float(subgroup),
+            "wins": ", ".join(wins) or "none",
+            "acceptable_for": ", ".join(near) or "none",
+            "rank_range": (
+                f"{decision['best_rank']:.0f} to {decision['worst_rank']:.0f}"
+            ),
+            "max_regret": float(decision["max_regret"]),
+        })
+    return rows
 
 
 def _mc_errors(results: ResultsTable, name: str) -> NDArray[np.float64]:
@@ -460,6 +536,7 @@ def plot_priorities(report: PreferenceSweep) -> Figure:
     ax.imshow(
         ranks, cmap="Blues_r", vmin=1, vmax=max(2, float(ranks.max())), aspect="auto"
     )
+    acceptable = acceptable_sets(report)
     labels = []
     for i in indices:
         cfg = report.summary.configs[i]
@@ -481,13 +558,101 @@ def plot_priorities(report: PreferenceSweep) -> Figure:
             color="white" if rank < (ranks.max() + 1) / 2 else "black",
             fontweight="bold" if rank == 1 else "normal",
         )
+        if rank != 1 and indices[row] in acceptable[list(PRIORITIES)[column]]:
+            ax.add_patch(
+                Rectangle(
+                    (column - 0.5, row - 0.5),
+                    1,
+                    1,
+                    fill=False,
+                    edgecolor="black",
+                    linewidth=2.5,
+                )
+            )
     ax.set_title(
         "Same evidence, different priorities\n"
-        "Rank 1 wins; ranks include all feasible designs",
+        "Rank 1 wins; outlined designs are practically equivalent to the winner",
         fontsize=15,
         pad=16,
     )
-    ax.set_xlabel("Allocation: P = proportional; O = oversample", labelpad=12)
+    ax.set_xlabel(
+        "Allocation: P = proportional; O = oversample. "
+        "Ranks include all feasible designs.",
+        labelpad=12,
+    )
+    return fig
+
+
+def plot_robustness(report: PreferenceSweep) -> Figure:
+    """Show each feasible Pareto design's largest regret across priorities.
+
+    Args:
+        report: Preference report under the named scenarios.
+
+    Returns:
+        A horizontal bar chart annotated with the scenarios each design wins
+        or nearly wins, or a message if no design is feasible.
+    """
+    rows = robustness_rows(report)
+    fig, ax = plt.subplots(
+        figsize=(10, max(3.5, 0.42 * len(rows) + 1.8)), layout="constrained"
+    )
+    if not rows:
+        ax.text(0.5, 0.5, "No design meets the budget", ha="center", va="center")
+        ax.axis("off")
+        return fig
+    regrets = np.array([row["max_regret"] for row in rows])
+    lowest = np.isclose(regrets, regrets.min())
+    positions = np.arange(len(rows))
+    ax.barh(
+        positions,
+        regrets,
+        color=[COLORS[row["allocation"]] for row in rows],
+        edgecolor=["black" if flag else "none" for flag in lowest],
+        linewidth=2,
+    )
+    labels = [
+        f"{row['design']} · {row['participants']} people / "
+        f"{row['communities']} communities"
+        for row in rows
+    ]
+    ax.set_yticks(positions, labels, fontsize=10)
+    ax.invert_yaxis()
+    pad = 0.01 * regrets.max()
+    for position, row in zip(positions, rows, strict=True):
+        notes = []
+        if row["wins"] != "none":
+            notes.append(f"wins: {row['wins']}")
+        near = [
+            name
+            for name in row["acceptable_for"].split(", ")
+            if name != "none" and name not in row["wins"].split(", ")
+        ]
+        if near:
+            notes.append(f"near the winner: {', '.join(near)}")
+        ax.text(
+            row["max_regret"] + pad,
+            position,
+            "; ".join(notes),
+            va="center",
+            fontsize=9,
+        )
+    ax.set_xlim(0, 1.9 * regrets.max())
+    ax.set(
+        xlabel="Largest regret across the three priorities "
+        "(weighted share of the reference ranges)",
+        title="Which choices hold up when priorities change?\n"
+        "Outlined: the smallest largest regret across these three scenarios",
+    )
+    ax.legend(
+        handles=[
+            Line2D([], [], color=color, lw=8, label=name)
+            for name, color in COLORS.items()
+        ],
+        loc="lower right",
+        frameon=False,
+    )
+    ax.spines[["top", "right"]].set_visible(False)
     return fig
 
 
@@ -562,6 +727,7 @@ def main() -> None:
         "population": plot_population(world),
         "tradeoffs": plot_tradeoffs(report, BUDGET),
         "priorities": plot_priorities(report),
+        "robustness": plot_robustness(report),
         "costs": plot_cost_components(report, SurveyCosts()),
     }.items():
         figure.savefig(asset_dir / f"serosurvey_{name}.png", dpi=160)
@@ -569,9 +735,21 @@ def main() -> None:
     print(
         f"18 designs, 19,800 evaluations, completed in {perf_counter() - started:.2f}s"
     )
+    acceptable = acceptable_sets(report)
     for name, ranks in zip(PRIORITIES, report.ranks, strict=True):
         selected = np.flatnonzero(ranks == 1)
-        print(f"{name}: " + ", ".join(f"D{i + 1:02d}" for i in selected))
+        near = ", ".join(f"D{i + 1:02d}" for i in acceptable[name])
+        print(
+            f"{name}: "
+            + ", ".join(f"D{i + 1:02d}" for i in selected)
+            + f" (practically equivalent: {near})"
+        )
+    rows = robustness_rows(report)
+    steadiest = min(rows, key=itemgetter("max_regret"))
+    print(
+        f"Smallest largest regret: {steadiest['design']} "
+        f"({steadiest['max_regret']:.3f}; wins: {steadiest['wins']})"
+    )
 
 
 if __name__ == "__main__":
