@@ -4734,14 +4734,14 @@
   ],
   "provenance": {
     "runtime": {
-      "trade-study": "0.3.0",
+      "trade-study": "0.4.0",
       "numpy": "2.5.3"
     },
     "caller": {
       "model": "examples/serosurvey_study.py SurveyWorld and SurveyScorer",
       "script": "examples/serosurvey_contexts.py",
       "source_sha256": {
-        "serosurvey_study.py": "f159c6065fedef1459d5ab94db8634db2d804793631ffb793dcddbbeee35c528",
+        "serosurvey_study.py": "d55c4a41486c7767d70cffa220b2eeb404bbbbfd49047aac952658de6c72cb5b",
         "serosurvey_contexts.py": "37a867fde05df33c56a983378cdafffabbcf35927209f7919c41bdb4421abe64"
       },
       "contexts": {

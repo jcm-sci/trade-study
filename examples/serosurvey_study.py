@@ -76,6 +76,7 @@ EQUIVALENCE = {
 # proportional allocation, and the sweep's paired reference design.
 PAIRED_SIZE = {"participants": 600, "communities": 20}
 REFERENCE_DESIGN = {**PAIRED_SIZE, "allocation": "proportional"}
+FRAMES = ("community", "residual")
 CONTRAST_LABELS = {
     "cost_usd": "Financial cost (USD)",
     "overall_error_pp": "Overall error (points)",
@@ -118,6 +119,26 @@ def allocation_counts(
     fraction = shares[config["allocation"]][1]
     second_n, second_k = round(n * fraction), round(k * fraction)
     return (int(n - second_n), second_n), (int(k - second_k), second_k)
+
+
+def sampling_frame(config: dict[str, Any]) -> str:
+    """Return a configuration's sampling frame, community by default.
+
+    Args:
+        config: Survey configuration, optionally with a ``frame`` key.
+
+    Returns:
+        ``"community"`` (household survey in sampled communities) or
+        ``"residual"`` (residual specimens from facilities serving them).
+
+    Raises:
+        ValueError: If the frame is unknown.
+    """
+    frame = config.get("frame", "community")
+    if frame not in FRAMES:
+        msg = "Frame must be 'community' or 'residual'"
+        raise ValueError(msg)
+    return str(frame)
 
 
 @dataclass(frozen=True)
@@ -163,6 +184,10 @@ class SurveyWorld:
         pool: Communities in each group's population (80:20 composition).
         sampled_cap: Most communities a design may sample per group.
         per_community_cap: Most participants a design may sample per community.
+        selection_odds: For the residual-specimen frame, the odds of antibody
+            positivity among specimens relative to the community, by group
+            (1 means no selection bias). Equivalently, antibody-positive people
+            are this many times as likely to contribute a specimen.
     """
 
     prevalence: tuple[float, float] = (0.9, 0.65)
@@ -172,6 +197,7 @@ class SurveyWorld:
     pool: tuple[int, int] = (320, 80)
     sampled_cap: int = 40
     per_community_cap: int = 120
+    selection_odds: tuple[float, float] = (1.0, 1.0)
 
     def __post_init__(self) -> None:
         """Validate the illustrative population, sampling limits and seed.
@@ -205,6 +231,11 @@ class SurveyWorld:
             or self.per_community_cap < 1
         ):
             msg = "Require two pools of at least sampled_cap >= 1 communities"
+            raise ValueError(msg)
+        if len(self.selection_odds) != 2 or not all(
+            np.isfinite(odds) and odds > 0 for odds in self.selection_odds
+        ):
+            msg = "Require two finite positive selection odds"
             raise ValueError(msg)
 
     def population(
@@ -246,8 +277,14 @@ class SurveyWorld:
     ) -> tuple[NDArray[np.float64], SurveyOutcome]:
         """Survey the replicate's shared population, preserving exact totals.
 
+        A residual-specimen design (``frame="residual"``) samples facilities
+        serving the same communities and uses the same draws, with each
+        community's prevalence among specimens shifted by ``selection_odds``;
+        with odds of one it reproduces the community survey exactly.
+
         Args:
-            config: Survey participant/community totals and allocation.
+            config: Survey participant/community totals, allocation and
+                optional sampling frame.
             rep: Nonnegative replicate id; all designs share its population.
 
         Returns:
@@ -259,10 +296,11 @@ class SurveyWorld:
                 design exceeds the sampling limits.
         """
         people, communities = allocation_counts(config)
+        residual = sampling_frame(config) == "residual"
         prevalences, draws = self.population(rep)
         estimates = []
-        for pi, uniforms, n, k in zip(
-            prevalences, draws, people, communities, strict=True
+        for pi, uniforms, n, k, odds in zip(
+            prevalences, draws, people, communities, self.selection_odds, strict=True
         ):
             sizes = np.full(k, n // k, dtype=int)
             sizes[: n % k] += 1
@@ -270,7 +308,10 @@ class SurveyWorld:
                 msg = "Design exceeds the population's sampling limits"
                 raise ValueError(msg)
             slots = np.arange(self.per_community_cap) < sizes[:, None]
-            positives = (uniforms[:k] < pi[:k, None]) & slots
+            sampled = pi[:k]
+            if residual and odds != 1:
+                sampled = odds * sampled / (odds * sampled + 1 - sampled)
+            positives = (uniforms[:k] < sampled[:, None]) & slots
             estimates.append(float(positives.sum() / n))
         truth = (
             np.array([float(pi.mean()) for pi in prevalences])
@@ -288,11 +329,17 @@ class SurveyCosts:
         setup: Fixed survey setup cost.
         per_community: Community visit costs ordered by group.
         per_participant: Participant costs ordered by group.
+        per_facility: Residual-specimen frame: facility coordination and
+            specimen transport costs ordered by group (no community visits).
+        per_specimen: Residual-specimen frame: retrieval, testing and data
+            linkage costs per specimen ordered by group.
     """
 
     setup: float = 3000.0
     per_community: tuple[float, float] = (250.0, 700.0)
     per_participant: tuple[float, float] = (30.0, 40.0)
+    per_facility: tuple[float, float] = (100.0, 200.0)
+    per_specimen: tuple[float, float] = (12.0, 15.0)
 
     def __post_init__(self) -> None:
         """Validate the nonnegative financial cost assumptions.
@@ -300,24 +347,39 @@ class SurveyCosts:
         Raises:
             ValueError: If cost coefficients are invalid.
         """
-        if len(self.per_community) != 2 or len(self.per_participant) != 2:
+        groups = (
+            self.per_community,
+            self.per_participant,
+            self.per_facility,
+            self.per_specimen,
+        )
+        if any(len(costs) != 2 for costs in groups):
             msg = "Supply one cost per population group"
             raise ValueError(msg)
-        values = (self.setup, *self.per_community, *self.per_participant)
+        values = (self.setup, *(cost for costs in groups for cost in costs))
         if not all(np.isfinite(value) and value >= 0 for value in values):
             msg = "Costs must be finite and nonnegative"
             raise ValueError(msg)
 
     def components(self, config: dict[str, Any]) -> dict[str, float]:
-        """Compute additive fixed, community and participant costs.
+        """Compute additive fixed, site and per-person costs.
 
         Args:
-            config: Survey participant/community totals and allocation.
+            config: Survey participant/community totals, allocation and
+                optional sampling frame.
 
         Returns:
-            Three separate financial cost components in illustrative USD.
+            Three separate financial cost components in illustrative USD:
+            setup, community visits (or facilities) and participants (or
+            specimens).
         """
         people, communities = allocation_counts(config)
+        if sampling_frame(config) == "residual":
+            return {
+                "Setup": self.setup,
+                "Facilities": float(np.dot(communities, self.per_facility)),
+                "Specimens": float(np.dot(people, self.per_specimen)),
+            }
         return {
             "Setup": self.setup,
             "Community visits": float(np.dot(communities, self.per_community)),
