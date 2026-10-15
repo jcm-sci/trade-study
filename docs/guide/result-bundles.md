@@ -42,6 +42,11 @@ metadata stays in `ResultsTable.metadata`. The bundle records trade-study and
 NumPy versions in `provenance["runtime"]`, with caller information separately
 in `provenance["caller"]`.
 
+Finite `ResultsTable.aggregate_replicates()` summaries can be saved directly:
+their generated `score_std` metadata uses primitive Python floats. Caller
+configs and provenance still need supported primitive JSON values. Non-finite
+metadata remains unsupported even though score arrays may contain NaNs.
+
 ## Version-1 schema and validation
 
 Required files are `scores.npz` and `meta.json`; `annotations.npz` is required

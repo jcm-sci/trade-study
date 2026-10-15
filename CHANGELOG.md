@@ -32,6 +32,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Replicate aggregates store standard-deviation metadata as primitive Python
+  floats, allowing finite summaries to round-trip through versioned result
+  bundles without caller conversion. The artifact format continues to reject
+  unsupported caller-supplied NumPy values (#184).
+
 - Clean-wheel validation explicitly installs and tests with its temporary
   interpreter, preserving the editable development environment even when
   `UV_PYTHON` is set. A required CI job exercises that environment boundary (#180).
