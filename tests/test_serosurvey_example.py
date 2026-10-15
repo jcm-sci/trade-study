@@ -12,28 +12,41 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 
+from examples import serosurvey_study
 from examples.serosurvey_study import (
     EQUIVALENCE,
     GROUP_WEIGHTS,
+    INDICATOR,
+    PRECISION_TARGET_PP,
     PRIORITIES,
+    REFINE_REPS,
+    TARGET_HALF_WIDTH,
     SurveyCosts,
     SurveyOutcome,
     SurveyScorer,
     SurveyWorld,
     acceptable_sets,
     allocation_counts,
+    planned_replicates,
+    plot_precision,
     plot_priorities,
     plot_robustness,
+    precision_rows,
     preference_policy,
     robustness_rows,
+    run_study,
     survey_factors,
+    survey_indicators,
     survey_observables,
 )
 from trade_study import (
     Constraint,
     PreferenceSweep,
+    ResultsTable,
     build_grid,
     preference_sweep,
+    proportion_interval,
+    replicates_for_half_width,
     run_grid,
 )
 
@@ -230,5 +243,82 @@ def test_infeasible_budget_has_no_robustness_rows() -> None:
     assert robustness_rows(report) == []
     assert all(members == [] for members in acceptable_sets(report).values())
     figure = plot_robustness(report)
+    assert figure.axes[0].texts[0].get_text() == "No design meets the budget"
+    plt.close(figure)
+
+
+@pytest.mark.parametrize(
+    ("estimate", "expected"), [(0.60, 1.0), (0.70, 1.0), (0.5999, 0.0), (0.71, 0.0)]
+)
+def test_precision_indicator_is_inclusive_at_the_target(
+    estimate: float, expected: float
+) -> None:
+    config = {"participants": 300, "communities": 10, "allocation": "oversample"}
+    truth = np.array([0.9, 0.65])
+    outcome = SurveyOutcome(np.array([0.9, estimate]), (150, 150), (5, 5))
+    scores = SurveyScorer().score(truth, outcome, config)
+    assert PRECISION_TARGET_PP == 5
+    assert scores[INDICATOR] == expected
+
+
+def test_planned_replicates_fit_the_refinement_phase() -> None:
+    planned = planned_replicates()
+    assert planned == replicates_for_half_width(TARGET_HALF_WIDTH)
+    assert planned <= REFINE_REPS
+    worst = proportion_interval(REFINE_REPS // 2, REFINE_REPS)
+    assert (worst.high - worst.low) / 2 <= TARGET_HALF_WIDTH
+
+
+def test_run_study_refuses_too_few_replicates(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(serosurvey_study, "REFINE_REPS", 10)
+    with pytest.raises(ValueError, match="planned indicator precision"):
+        run_study(SurveyWorld())
+
+
+def _raw_with_indicator(n_reps: int) -> ResultsTable:
+    grid = build_grid(survey_factors(), method="full")
+    observables = survey_observables() + survey_indicators()
+    return run_grid(SurveyWorld(), SurveyScorer(), grid, observables, n_reps=n_reps)
+
+
+def test_precision_rows_match_raw_indicator_counts() -> None:
+    raw = _raw_with_indicator(40)
+    summary = raw.aggregate_replicates(proportion_observables=[INDICATOR])
+    report = preference_sweep(
+        raw,
+        survey_observables(),
+        policy=preference_policy(),
+        constraints=[Constraint("budget", "cost_usd", "<=", 40_000)],
+    )
+    rows = precision_rows(report, summary)
+    assert len(rows) == int(report.pareto.sum())
+    costs = [row["cost_usd"] for row in rows]
+    assert costs == sorted(costs)
+    column = raw.observable_names.index(INDICATOR)
+    for row in rows:
+        config = {
+            key: row[key] for key in ("participants", "communities", "allocation")
+        }
+        matches = [i for i, c in enumerate(raw.configs) if c == config]
+        assert row["n"] == len(matches) == 40
+        assert row["k"] == int(raw.scores[matches, column].sum())
+        assert row["low"] <= row["within_target"] <= row["high"]
+        assert row["within_target"] == pytest.approx(row["k"] / row["n"])
+    figure = plot_precision(report, summary)
+    assert len(figure.axes[0].patches) == len(rows)
+    plt.close(figure)
+
+
+def test_infeasible_budget_has_no_precision_rows() -> None:
+    raw = _raw_with_indicator(8)
+    summary = raw.aggregate_replicates(proportion_observables=[INDICATOR])
+    report = preference_sweep(
+        raw,
+        survey_observables(),
+        policy=preference_policy(),
+        constraints=[Constraint("budget", "cost_usd", "<=", 1)],
+    )
+    assert precision_rows(report, summary) == []
+    figure = plot_precision(report, summary)
     assert figure.axes[0].texts[0].get_text() == "No design meets the budget"
     plt.close(figure)

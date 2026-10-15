@@ -104,8 +104,14 @@ Both phases evaluate all 18 designs. Refinement increases simulation replication
 not the number of participants per survey. The refined estimates replace the
 screening estimates; the two phases are not pooled.
 
+The refinement count is fixed before running. `replicates_for_half_width(0.035)`
+gives 781 surveys per design for a worst-case 95% Wilson half-width of 3.5
+points on the precision-target share below; the notebook checks that the 1,000
+used are enough.
+
 Each scorer call returns financial cost and absolute prevalence errors in
-percentage points. `aggregate_replicates()` averages those errors, producing
+percentage points, and a 0/1 indicator that the underserved-group estimate is
+within ±5 points of its target. `aggregate_replicates()` averages those errors, producing
 mean absolute error (MAE), and retains their Monte Carlo variation. Averaging
 signed errors before taking their absolute value would measure something different.
 
@@ -168,6 +174,25 @@ scenario. The tolerances are judgments to agree with stakeholders; regret and
 selection fractions describe only the supplied scenarios and are not
 probabilities that a design is best.
 
+## How often is an estimate close enough?
+
+Mean absolute error is hard to act on. A planner may ask instead how often a
+design estimates the underserved group within ±5 percentage points of its
+target. Each simulated survey is one success or failure against the same fixed
+target as the error objectives. `aggregate_replicates(proportion_observables=
+["underserved_within_5pp"])` records the counts and a 95% Wilson interval for
+each design; the indicator is reported and does not enter the priority weights.
+
+![Share of surveys within the precision target](../assets/serosurvey_precision.png)
+
+In the saved run, the cost-first design meets the target in 44% of simulated
+surveys, while the subgroup-accuracy winner and its practically equivalent
+alternative meet it in 76% and 75%. The intervals are fixed-sample marginal
+intervals for the simulation under this model. They are not the uncertainty of
+a real survey's estimate, they carry no guarantee under optional stopping, and
+two marginal intervals do not give an interval for the difference between two
+designs, which needs a paired analysis.
+
 The optional cost breakdown in the appendix supports an economics discussion:
 
 ![Cost components for the selected designs](../assets/serosurvey_costs.png)
@@ -184,6 +209,9 @@ The optional cost breakdown in the appendix supports an economics discussion:
 | 11–13 | Regret and practically equivalent designs |
 | 13–14 | Assumptions a real project would replace |
 | 14–15 | Discussion |
+
+For a 20-minute version, add the precision target (section 7 of the notebook)
+after the regret segment.
 
 The notebook's setup cells are collapsed, and slideshow metadata identifies
 the main narrative and its figures. The model details and cost breakdown are
