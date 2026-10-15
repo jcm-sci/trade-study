@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- The serosurvey example records a 0/1 indicator per simulated survey (the
+  underserved-group estimate within ±5 percentage points of its target), sizes
+  the refinement phase with `replicates_for_half_width` before running, and
+  reports each feasible Pareto design's share with a fixed-sample 95% Wilson
+  interval (`survey_indicators`, `planned_replicates`, `precision_rows`,
+  `plot_precision`, `run_study`). The notebook and guide add a section on how
+  often an estimate is close enough (#189).
+
 - The serosurvey example declares raw-unit practical-equivalence tolerances and
   reports, for each feasible Pareto design, the priority scenarios it wins, its
   rank range, its largest regret and the scenarios for which it is practically

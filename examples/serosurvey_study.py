@@ -29,6 +29,7 @@ from trade_study import (
     Study,
     build_grid,
     preference_sweep,
+    replicates_for_half_width,
 )
 
 if TYPE_CHECKING:
@@ -58,6 +59,12 @@ PRIORITIES = {
     },
 }
 BUDGET = 40_000.0
+# One success per simulated survey: underserved estimate within this many points.
+PRECISION_TARGET_PP = 5.0
+INDICATOR = "underserved_within_5pp"
+# Fixed before running: worst-case 95% Wilson half-width for the indicator share.
+TARGET_HALF_WIDTH = 0.035
+REFINE_REPS = 1000
 # Differences this small are treated as practically equal (illustrative judgments).
 EQUIVALENCE = {
     "cost_usd": 2_500.0,
@@ -270,13 +277,17 @@ class SurveyScorer:
             config: Survey configuration used for financial cost.
 
         Returns:
-            Cost and overall/subgroup absolute errors in percentage points.
+            Cost, overall/subgroup absolute errors in percentage points, and a
+            0/1 indicator that the subgroup error is at most PRECISION_TARGET_PP
+            (inclusive; the small tolerance absorbs floating-point rounding).
         """
         overall = float(np.dot(observations.prevalence - truth, GROUP_WEIGHTS))
+        subgroup = 100 * abs(float(observations.prevalence[1] - truth[1]))
         return {
             "cost_usd": sum(self.costs.components(config).values()),
             "overall_error_pp": 100 * abs(overall),
-            "underserved_error_pp": 100 * abs(observations.prevalence[1] - truth[1]),
+            "underserved_error_pp": subgroup,
+            INDICATOR: float(subgroup <= PRECISION_TARGET_PP + 1e-9),
         }
 
 
@@ -302,6 +313,28 @@ def survey_observables() -> list[Observable]:
         Financial cost, overall MAE and underserved-group MAE observables.
     """
     return [Observable(name, Direction.MINIMIZE) for name in PRIORITIES["Cost first"]]
+
+
+def survey_indicators() -> list[Observable]:
+    """Return reported 0/1 indicators that do not enter the preference weights.
+
+    Returns:
+        The precision-target indicator, maximized when reported.
+    """
+    return [Observable(INDICATOR, Direction.MAXIMIZE)]
+
+
+def planned_replicates() -> int:
+    """Return the replicate count needed for the planned indicator precision.
+
+    The worst-case 95% Wilson half-width (at an observed share of one half) is
+    at most TARGET_HALF_WIDTH with this many independent simulated surveys. The
+    count is fixed before running and does not depend on the outcomes.
+
+    Returns:
+        Minimum replicate count per design for the planned precision.
+    """
+    return replicates_for_half_width(TARGET_HALF_WIDTH, confidence=0.95)
 
 
 def preference_policy() -> PreferencePolicy:
@@ -413,6 +446,46 @@ def robustness_rows(report: PreferenceSweep) -> list[dict[str, Any]]:
                 f"{decision['best_rank']:.0f} to {decision['worst_rank']:.0f}"
             ),
             "max_regret": float(decision["max_regret"]),
+        })
+    return rows
+
+
+def precision_rows(
+    report: PreferenceSweep, summary: ResultsTable
+) -> list[dict[str, Any]]:
+    """Report the precision-target share for each feasible Pareto design.
+
+    Args:
+        report: Preference report defining feasibility and the Pareto set.
+        summary: Per-design results from ``aggregate_replicates`` with
+            ``proportion_observables=[INDICATOR]``.
+
+    Returns:
+        One row per feasible Pareto design, sorted by cost, with the share of
+        simulated surveys whose subgroup estimate is within the target and its
+        fixed-sample marginal Wilson interval.
+    """
+    intervals = {
+        tuple(sorted(config.items())): meta["proportion_intervals"][INDICATOR]
+        for config, meta in zip(summary.configs, summary.metadata, strict=True)
+        if INDICATOR in meta.get("proportion_intervals", {})
+    }
+    indices = np.flatnonzero(report.pareto)
+    indices = indices[np.argsort(report.summary.scores[indices, 0], kind="stable")]
+    rows: list[dict[str, Any]] = []
+    for i in indices:
+        config = report.summary.configs[i]
+        record = intervals[tuple(sorted(config.items()))]
+        rows.append({
+            "design": f"D{i + 1:02d}",
+            **config,
+            "cost_usd": float(report.summary.scores[i, 0]),
+            "subgroup_mae_pp": float(report.summary.scores[i, 2]),
+            "within_target": float(record["estimate"]),
+            "low": float(record["low"]),
+            "high": float(record["high"]),
+            "k": int(record["k"]),
+            "n": int(record["n"]),
         })
     return rows
 
@@ -656,6 +729,73 @@ def plot_robustness(report: PreferenceSweep) -> Figure:
     return fig
 
 
+def plot_precision(report: PreferenceSweep, summary: ResultsTable) -> Figure:
+    """Show how often each feasible Pareto design meets the subgroup target.
+
+    Args:
+        report: Preference report defining feasibility and the Pareto set.
+        summary: Per-design results with indicator interval metadata.
+
+    Returns:
+        Shares with 95% Wilson intervals, or a message if no design is feasible.
+    """
+    rows = precision_rows(report, summary)
+    fig, ax = plt.subplots(
+        figsize=(10, max(3.5, 0.42 * len(rows) + 1.8)), layout="constrained"
+    )
+    if not rows:
+        ax.text(0.5, 0.5, "No design meets the budget", ha="center", va="center")
+        ax.axis("off")
+        return fig
+    positions = np.arange(len(rows))
+    shares = np.array([row["within_target"] for row in rows])
+    errors = np.array([
+        [row["within_target"] - row["low"], row["high"] - row["within_target"]]
+        for row in rows
+    ]).T
+    ax.barh(
+        positions,
+        100 * shares,
+        xerr=100 * errors,
+        color=[COLORS[row["allocation"]] for row in rows],
+        error_kw={"ecolor": "black", "capsize": 3},
+    )
+    labels = [
+        f"{row['design']} · {row['participants']} people / "
+        f"{row['communities']} communities"
+        for row in rows
+    ]
+    ax.set_yticks(positions, labels, fontsize=10)
+    ax.invert_yaxis()
+    for position, row in zip(positions, rows, strict=True):
+        ax.text(
+            100 * row["high"] + 1,
+            position,
+            f"{100 * row['within_target']:.0f}% "
+            f"({100 * row['low']:.0f} to {100 * row['high']:.0f})",
+            va="center",
+            fontsize=9,
+        )
+    ax.set_xlim(0, 115)
+    n = rows[0]["n"]
+    ax.set(
+        xlabel=f"Simulated surveys with the subgroup estimate within "
+        f"±{PRECISION_TARGET_PP:.0f} points (percent of {n:,})",
+        title="How often is the subgroup estimate close enough?\n"
+        "Bars: 95% Wilson intervals for simulation precision under this model",
+    )
+    ax.legend(
+        handles=[
+            Line2D([], [], color=color, lw=8, label=name)
+            for name, color in COLORS.items()
+        ],
+        loc="lower right",
+        frameon=False,
+    )
+    ax.spines[["top", "right"]].set_visible(False)
+    return fig
+
+
 def plot_cost_components(report: PreferenceSweep, costs: SurveyCosts) -> Figure:
     """Show financial cost components for the preference winners.
 
@@ -695,39 +835,70 @@ def plot_cost_components(report: PreferenceSweep, costs: SurveyCosts) -> Figure:
     return fig
 
 
+def run_study(
+    world: SurveyWorld,
+) -> tuple[ResultsTable, ResultsTable, PreferenceSweep]:
+    """Run the screening and refinement phases and the budgeted preference sweep.
+
+    Args:
+        world: Hypothetical population for the screening phase; refinement uses
+            an independent seed.
+
+    Returns:
+        Raw refinement results, per-design results with indicator intervals,
+        and the preference report under the illustrative budget.
+
+    Raises:
+        ValueError: If REFINE_REPS is below the planned indicator precision.
+    """
+    if planned_replicates() > REFINE_REPS:
+        msg = "REFINE_REPS is below the planned indicator precision"
+        raise ValueError(msg)
+    factors = survey_factors()
+    observables = survey_observables()
+    grid = build_grid(factors, method="full")
+    study = Study(
+        world=world,
+        scorer=SurveyScorer(),
+        observables=observables + survey_indicators(),
+        factors=factors,
+        phases=[
+            Phase("screen", grid=grid, n_reps=100),
+            Phase(
+                "refine",
+                grid=grid,
+                n_reps=REFINE_REPS,
+                world=replace(world, seed=2027),
+            ),
+        ],
+    )
+    study.run()
+    raw = study.results("refine")
+    summary = raw.aggregate_replicates(proportion_observables=[INDICATOR])
+    report = preference_sweep(
+        raw,
+        observables,
+        policy=preference_policy(),
+        constraints=[Constraint("financial_budget", "cost_usd", "<=", BUDGET)],
+    )
+    return raw, summary, report
+
+
 def main() -> None:
     """Run the notebook's study and export documentation figures.
 
     All 18 designs receive both screening and independent refinement.
     """
     started = perf_counter()
-    factors = survey_factors()
-    observables = survey_observables()
-    grid = build_grid(factors, method="full")
     world = SurveyWorld(seed=2026)
-    study = Study(
-        world=world,
-        scorer=SurveyScorer(),
-        observables=observables,
-        factors=factors,
-        phases=[
-            Phase("screen", grid=grid, n_reps=100),
-            Phase("refine", grid=grid, n_reps=1000, world=replace(world, seed=2027)),
-        ],
-    )
-    study.run()
-    report = preference_sweep(
-        study.results("refine"),
-        observables,
-        policy=preference_policy(),
-        constraints=[Constraint("financial_budget", "cost_usd", "<=", BUDGET)],
-    )
+    _, summary, report = run_study(world)
     asset_dir = Path(__file__).resolve().parents[1] / "docs" / "assets"
     for name, figure in {
         "population": plot_population(world),
         "tradeoffs": plot_tradeoffs(report, BUDGET),
         "priorities": plot_priorities(report),
         "robustness": plot_robustness(report),
+        "precision": plot_precision(report, summary),
         "costs": plot_cost_components(report, SurveyCosts()),
     }.items():
         figure.savefig(asset_dir / f"serosurvey_{name}.png", dpi=160)
@@ -743,6 +914,12 @@ def main() -> None:
             f"{name}: "
             + ", ".join(f"D{i + 1:02d}" for i in selected)
             + f" (practically equivalent: {near})"
+        )
+    for row in precision_rows(report, summary):
+        print(
+            f"{row['design']}: {100 * row['within_target']:.1f}% within "
+            f"±{PRECISION_TARGET_PP:.0f} points "
+            f"({100 * row['low']:.1f} to {100 * row['high']:.1f}; n={row['n']})"
         )
     rows = robustness_rows(report)
     steadiest = min(rows, key=itemgetter("max_regret"))
