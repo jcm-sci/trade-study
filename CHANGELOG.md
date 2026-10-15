@@ -6,6 +6,15 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- `examples/serosurvey_contexts.py` runs the serosurvey designs in nine
+  contexts (intracluster correlation and underserved-group prevalence), keeps
+  context and design keys separate, reports the winners, practically equivalent
+  designs and steadiest design within each context and how often the winner
+  changes along each context factor, and saves the per-design summaries as a
+  version-1 result bundle with model, context, seed and objective provenance
+  (`examples/data/serosurvey_contexts/`). The notebook loads the bundle, and CI
+  runs the script (#188).
+
 - The serosurvey example records a 0/1 indicator per simulated survey (the
   underserved-group estimate within ±5 percentage points of its target), sizes
   the refinement phase with `replicates_for_half_width` before running, and

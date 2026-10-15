@@ -197,6 +197,37 @@ The optional cost breakdown in the appendix supports an economics discussion:
 
 ![Cost components for the selected designs](../assets/serosurvey_costs.png)
 
+## Does the context change the answer?
+
+Clustering within communities and the gap between groups are properties of the
+setting, not design choices. `examples/serosurvey_contexts.py` runs the 18
+designs in nine contexts (intracluster correlation 0.02, 0.06 or 0.12;
+underserved-group prevalence 55%, 65% or 75%) with 1,000 simulated surveys each.
+Context and design keys stay separate in every configuration, and the
+recommendations are computed within each context with the same budget,
+priorities and tolerances. The per-design summaries, including the indicator
+intervals, are saved as a version-1 result bundle in
+`examples/data/serosurvey_contexts/` with provenance: SHA-256 of the model and
+script, the contexts, seed, replicate count, objectives and decision settings.
+The notebook loads and validates the bundle instead of rerunning. To regenerate
+it and the figure (about ten seconds):
+
+```bash
+uv run --extra notebook python -m examples.serosurvey_contexts --overwrite
+```
+
+![Winning design by context](../assets/serosurvey_contexts.png)
+
+In the saved run, the cost-first and overall-accuracy winners are the same in
+all nine contexts. Under the subgroup-accuracy priority, the winner changes
+mainly with clustering: at intracluster correlation 0.12, 300 people in 40
+communities replaces 600 people in 20 communities. The baseline context
+reproduces the main notebook's results exactly, because it uses the same seed
+and replicate streams. Random streams depend on the seed, replicate and design,
+so each design sees the same streams in every context. The grid has nine
+points; interpolating between them (for example with `fit_regime_surrogate`
+and its support warnings) is a possible extension.
+
 ## A 15-minute presentation
 
 | Minutes | Content |
