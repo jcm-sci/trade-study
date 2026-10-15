@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- The serosurvey example compares designs replicate by replicate: oversampling
+  against proportional allocation at a size fixed in advance, with paired
+  bootstrap intervals and the variance reduction from pairing
+  (`allocation_contrast`, `plot_allocation`), and every feasible design against
+  a reference design through `preference_sweep(paired_reference=...)`
+  (`reference_rows`). The notebook and guide add a section on whether
+  oversampling is worth it (#190).
+
 - `examples/serosurvey_contexts.py` runs the serosurvey designs in nine
   contexts (intracluster correlation and underserved-group prevalence), keeps
   context and design keys separate, reports the winners, practically equivalent
@@ -62,6 +70,15 @@ All notable changes to this project will be documented in this file.
 - Opt-in `EvaluationCache` reuses grid evaluations by typed configuration, replicate namespace/id, model/scorer revision, fidelity, objective and annotation definitions; includes provenance, bypass, invalidation and conflicting-evidence checks (#154).
 - `preference_sweep()` reports ranking/selection stability, regret, feasible Pareto alternatives, raw-unit practical equivalence and optional paired uncertainty under explicit normalization and preference assumptions, with exportable per-design summaries (#155).
 - A synthetic assay-cost example and guide demonstrate categorical choices, external cost annotations, cost as a Pareto objective, and screening/refinement with replicated design means (#83).
+
+### Changed
+
+- The serosurvey simulator draws one finite population of communities per
+  replicate from the seed and replicate id, and every design surveys it with the
+  same participant draws (common random numbers), so smaller designs are nested
+  in larger ones. The estimand is now the replicate's realized group prevalence
+  (`SurveyWorld(estimand="fixed")` keeps the fixed group means). Figures, the
+  notebook, the guide's numbers and the context bundle are regenerated (#190).
 
 ### Fixed
 

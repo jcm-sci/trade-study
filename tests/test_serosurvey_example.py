@@ -14,11 +14,14 @@ import pytest
 
 from examples import serosurvey_study
 from examples.serosurvey_study import (
+    CONTRAST_LABELS,
     EQUIVALENCE,
     GROUP_WEIGHTS,
     INDICATOR,
+    PAIRED_SIZE,
     PRECISION_TARGET_PP,
     PRIORITIES,
+    REFERENCE_DESIGN,
     REFINE_REPS,
     TARGET_HALF_WIDTH,
     SurveyCosts,
@@ -26,13 +29,16 @@ from examples.serosurvey_study import (
     SurveyScorer,
     SurveyWorld,
     acceptable_sets,
+    allocation_contrast,
     allocation_counts,
     planned_replicates,
+    plot_allocation,
     plot_precision,
     plot_priorities,
     plot_robustness,
     precision_rows,
     preference_policy,
+    reference_rows,
     robustness_rows,
     run_study,
     survey_factors,
@@ -108,6 +114,94 @@ def test_streams_replay_and_phase_seeds_are_distinct() -> None:
     np.testing.assert_array_equal(first, replay)
     assert not np.array_equal(first, new_phase)
     assert not np.array_equal(first, new_replicate)
+
+
+def _expected_estimates(
+    world: SurveyWorld, config: dict[str, Any], rep: int
+) -> list[float]:
+    # Recompute a survey directly from the replicate's shared population.
+    people, communities = allocation_counts(config)
+    prevalences, draws = world.population(rep)
+    estimates = []
+    for pi, uniforms, n, k in zip(prevalences, draws, people, communities, strict=True):
+        positives = sum(
+            int((uniforms[j, : n // k + (j < n % k)] < pi[j]).sum()) for j in range(k)
+        )
+        estimates.append(positives / n)
+    return estimates
+
+
+def test_designs_share_one_population_per_replicate() -> None:
+    world = SurveyWorld()
+    grid = build_grid(survey_factors(), method="full")
+    prevalences, _ = world.population(5)
+    realized = [float(pi.mean()) for pi in prevalences]
+    for config in grid:
+        truth, outcome = world.generate(config, rep=5)
+        np.testing.assert_allclose(truth, realized, rtol=0, atol=0)
+        np.testing.assert_allclose(
+            outcome.prevalence, _expected_estimates(world, config, 5), rtol=1e-15
+        )
+    small = {"participants": 300, "communities": 10, "allocation": "proportional"}
+    large = {"participants": 600, "communities": 20, "allocation": "proportional"}
+    for rep in range(20):
+        # Equal community sizes (30), so the small sample is nested in the large.
+        a = world.generate(small, rep=rep)[1]
+        b = world.generate(large, rep=rep)[1]
+        assert np.all(
+            b.prevalence * b.participants >= a.prevalence * a.participants - 1e-9
+        )
+
+
+def test_replicates_draw_independent_populations() -> None:
+    world = SurveyWorld()
+    first, first_draws = world.population(1)
+    second, second_draws = world.population(2)
+    replay, replay_draws = world.population(1)
+    for group in range(2):
+        np.testing.assert_array_equal(first[group], replay[group])
+        np.testing.assert_array_equal(first_draws[group], replay_draws[group])
+        assert not np.array_equal(first[group], second[group])
+        assert not np.array_equal(first_draws[group], second_draws[group])
+    assert len(first[0]) == 320
+    assert len(first[1]) == 80
+
+
+def test_participant_draws_do_not_depend_on_prevalence() -> None:
+    low = SurveyWorld(prevalence=(0.9, 0.55), correlation=0.12).population(2)[1]
+    high = SurveyWorld(prevalence=(0.9, 0.75), correlation=0.02).population(2)[1]
+    for a, b in zip(low, high, strict=True):
+        np.testing.assert_array_equal(a, b)
+
+
+def test_estimands_share_surveys_and_differ_in_target() -> None:
+    config = {"participants": 600, "communities": 20, "allocation": "oversample"}
+    realized, fixed = SurveyWorld(), SurveyWorld(estimand="fixed")
+    truth_realized, outcome_realized = realized.generate(config, rep=1)
+    truth_fixed, outcome_fixed = fixed.generate(config, rep=1)
+    np.testing.assert_array_equal(outcome_realized.prevalence, outcome_fixed.prevalence)
+    np.testing.assert_array_equal(truth_fixed, fixed.prevalence)
+    assert not np.array_equal(truth_realized, truth_fixed)
+    targets = np.array([realized.generate(config, rep=r)[0] for r in range(2000)])
+    p, rho, size = 0.65, realized.correlation, realized.pool[1]
+    variance = p * (1 - p) * rho / size
+    assert abs(targets[:, 1].mean() - p) < 4 * np.sqrt(variance / len(targets))
+    assert targets[:, 1].var(ddof=1) == pytest.approx(variance, rel=0.12)
+
+
+def test_invalid_estimand_and_population_limits_are_rejected() -> None:
+    with pytest.raises(ValueError, match="estimand"):
+        SurveyWorld(estimand="sample")
+    with pytest.raises(ValueError, match="Require two pools"):
+        SurveyWorld(pool=(320, 30))
+    with pytest.raises(ValueError, match="Replicate id"):
+        SurveyWorld().population(-1)
+    too_many = {"participants": 300, "communities": 40, "allocation": "proportional"}
+    with pytest.raises(ValueError, match="sampling limits"):
+        SurveyWorld(sampled_cap=20).generate(too_many)
+    too_large = {"participants": 1200, "communities": 10, "allocation": "proportional"}
+    with pytest.raises(ValueError, match="sampling limits"):
+        SurveyWorld(per_community_cap=100).generate(too_large)
 
 
 @pytest.mark.parametrize(
@@ -200,6 +294,20 @@ def test_notebook_shows_the_same_tolerances() -> None:
     block = re.search(r"equivalence=(\{.*?\})", source, re.DOTALL)
     assert block is not None
     assert ast.literal_eval(block.group(1)) == EQUIVALENCE
+
+
+def test_notebook_shows_the_same_reference_design() -> None:
+    notebook = Path(__file__).resolve().parents[1] / "examples/serosurvey_study.ipynb"
+    cells = json.loads(notebook.read_text(encoding="utf-8"))["cells"]
+    source = next(
+        "".join(cell["source"])
+        for cell in cells
+        if cell["cell_type"] == "code"
+        and "paired_reference=" in "".join(cell["source"])
+    )
+    block = re.search(r"reference = (\{.*?\})", source, re.DOTALL)
+    assert block is not None
+    assert ast.literal_eval(block.group(1)) == REFERENCE_DESIGN
 
 
 def test_acceptable_sets_hold_winners_within_tolerance() -> None:
@@ -321,4 +429,73 @@ def test_infeasible_budget_has_no_precision_rows() -> None:
     assert precision_rows(report, summary) == []
     figure = plot_precision(report, summary)
     assert figure.axes[0].texts[0].get_text() == "No design meets the budget"
+    plt.close(figure)
+
+
+def test_allocation_contrast_pairs_replicates_of_one_population() -> None:
+    grid = [{**PAIRED_SIZE, "allocation": a} for a in ("proportional", "oversample")]
+    observables = survey_observables() + survey_indicators()
+    raw = run_grid(SurveyWorld(), SurveyScorer(), grid, observables, n_reps=300)
+    rows = {row["objective"]: row for row in allocation_contrast(raw)}
+    assert list(rows) == list(CONTRAST_LABELS)
+    costs = SurveyCosts()
+    gap = sum(costs.components(grid[1]).values()) - sum(
+        costs.components(grid[0]).values()
+    )
+    assert rows["cost_usd"]["difference"] == pytest.approx(gap)
+    assert rows["cost_usd"]["low"] == pytest.approx(gap)
+    for name in ("overall_error_pp", "underserved_error_pp", INDICATOR):
+        column = raw.observable_names.index(name)
+        by_rep = {
+            (config["allocation"], meta["rep"]): raw.scores[i, column]
+            for i, (config, meta) in enumerate(
+                zip(raw.configs, raw.metadata, strict=True)
+            )
+        }
+        differences = [
+            by_rep["oversample", rep] - by_rep["proportional", rep]
+            for rep in range(300)
+        ]
+        row = rows[name]
+        assert row["n_pairs"] == 300
+        assert row["difference"] == pytest.approx(np.mean(differences))
+        assert row["low"] <= row["difference"] <= row["high"]
+        assert 0 < row["variance_ratio"] < 1
+    assert rows["underserved_error_pp"]["high"] < 0
+    assert rows[INDICATOR]["low"] > 0
+
+
+def test_sweep_compares_designs_with_the_reference() -> None:
+    raw = _raw_with_indicator(30)
+    report = preference_sweep(
+        raw,
+        survey_observables(),
+        policy=preference_policy(),
+        constraints=[Constraint("budget", "cost_usd", "<=", 40_000)],
+        paired_reference=REFERENCE_DESIGN,
+    )
+    feasible = int(report.feasible.sum())
+    labels = {
+        f"D{i + 1:02d}": config for i, config in enumerate(report.summary.configs)
+    }
+    for name in ("cost_usd", "overall_error_pp", "underserved_error_pp"):
+        rows = reference_rows(report, name)
+        assert len(rows) == feasible - 1
+        level = 1 - 0.05 / len(survey_observables()) / len(rows)
+        for row in rows:
+            config = labels[row["design"]]
+            assert config != REFERENCE_DESIGN
+            assert {k: row[k] for k in config} == config
+            assert row["confidence"] == pytest.approx(level)
+            assert row["low"] <= row["difference"] <= row["high"]
+    assert reference_rows(report, INDICATOR) == []
+
+
+def test_allocation_figure_marks_the_prespecified_size() -> None:
+    raw = _raw_with_indicator(20)
+    figure = plot_allocation(raw)
+    assert len(figure.axes) == 3
+    labels = [tick.get_text() for tick in figure.axes[0].get_yticklabels()]
+    assert len(labels) == 9
+    assert sum("over budget" in label for label in labels) == 4
     plt.close(figure)

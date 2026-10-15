@@ -28,6 +28,7 @@ from trade_study import (
     PreferencePolicy,
     Study,
     build_grid,
+    paired_difference,
     preference_sweep,
     replicates_for_half_width,
 )
@@ -70,6 +71,16 @@ EQUIVALENCE = {
     "cost_usd": 2_500.0,
     "overall_error_pp": 0.25,
     "underserved_error_pp": 0.5,
+}
+# Fixed before running: the size at which oversampling is compared with
+# proportional allocation, and the sweep's paired reference design.
+PAIRED_SIZE = {"participants": 600, "communities": 20}
+REFERENCE_DESIGN = {**PAIRED_SIZE, "allocation": "proportional"}
+CONTRAST_LABELS = {
+    "cost_usd": "Financial cost (USD)",
+    "overall_error_pp": "Overall error (points)",
+    "underserved_error_pp": "Subgroup error (points)",
+    INDICATOR: "Share within target",
 }
 
 
@@ -126,25 +137,48 @@ class SurveyOutcome:
 
 @dataclass(frozen=True)
 class SurveyWorld:
-    """Independent clustered surveys with known hypothetical group means.
+    """Clustered surveys of one shared hypothetical population per replicate.
+
+    For each replicate, random streams seeded by ``(seed, rep)`` draw a finite
+    pool of communities per group and a block of participant draws, each from
+    its own child stream so that participant draws do not depend on the
+    prevalence values. Every
+    design samples the same population: the first ``k`` communities of each
+    group's pool (a simple random sample of communities, because the pool order
+    is exchangeable) and, within each, the first ``n`` participant draws. Smaller
+    designs are nested in larger ones, so differences between designs can be
+    estimated replicate by replicate under common random numbers. Replicates are
+    independent of one another. Communities are treated as large relative to the
+    sample (no within-community finite-population correction).
 
     Attributes:
-        prevalence: Target means for other/underserved communities.
-        correlation: Within-community intraclass correlation. Communities
-            are independent, with Beta-distributed probabilities.
-        seed: Phase-specific seed; configuration and replicate identify
-            independent, reproducible random streams.
+        prevalence: Group means for other/underserved communities; community
+            prevalences are Beta-distributed around them.
+        correlation: Within-community intraclass correlation.
+        seed: Phase-specific seed; with the replicate id it identifies one
+            population, shared by all designs.
+        estimand: ``"realized"`` (default) targets the replicate's realized group
+            prevalence, the mean community prevalence over the pool; ``"fixed"``
+            targets the fixed group means.
+        pool: Communities in each group's population (80:20 composition).
+        sampled_cap: Most communities a design may sample per group.
+        per_community_cap: Most participants a design may sample per community.
     """
 
     prevalence: tuple[float, float] = (0.9, 0.65)
     correlation: float = 0.06
     seed: int = 2026
+    estimand: str = "realized"
+    pool: tuple[int, int] = (320, 80)
+    sampled_cap: int = 40
+    per_community_cap: int = 120
 
     def __post_init__(self) -> None:
-        """Validate the illustrative population and random seed.
+        """Validate the illustrative population, sampling limits and seed.
 
         Raises:
-            ValueError: If probabilities, correlation or seed are invalid.
+            ValueError: If probabilities, correlation, seed, estimand or
+                population sizes are invalid.
         """
         if len(self.prevalence) != 2 or not all(
             np.isfinite(p) and 0 <= p <= 1 for p in self.prevalence
@@ -161,51 +195,89 @@ class SurveyWorld:
         ):
             msg = "Require a nonnegative integer seed"
             raise ValueError(msg)
+        if self.estimand not in {"realized", "fixed"}:
+            msg = "estimand must be 'realized' or 'fixed'"
+            raise ValueError(msg)
+        if (
+            len(self.pool) != 2
+            or min(self.pool) < self.sampled_cap
+            or self.sampled_cap < 1
+            or self.per_community_cap < 1
+        ):
+            msg = "Require two pools of at least sampled_cap >= 1 communities"
+            raise ValueError(msg)
 
-    def generate(
-        self, config: dict[str, Any], *, rep: int = 0
-    ) -> tuple[NDArray[np.float64], SurveyOutcome]:
-        """Simulate clustered counts, preserving exact participant totals.
+    def population(
+        self, rep: int
+    ) -> tuple[list[NDArray[np.float64]], list[NDArray[np.float64]]]:
+        """Draw the replicate's shared population.
 
         Args:
-            config: Survey participant/community totals and allocation.
-            rep: Nonnegative replicate id. Configurations do not share
-                random streams; this example makes no paired-CRN claim.
+            rep: Nonnegative replicate id.
 
         Returns:
-            Fixed target group means and one survey's group estimates.
+            Community prevalences for each group's whole pool, and uniform
+            participant draws (``sampled_cap`` by ``per_community_cap``) for the
+            first communities of each pool.
 
         Raises:
-            ValueError: If the replicate id or configuration is invalid.
+            ValueError: If the replicate id is invalid.
         """
         if not isinstance(rep, int) or isinstance(rep, bool) or rep < 0:
             msg = "Replicate id must be a nonnegative integer"
             raise ValueError(msg)
-        people, communities = allocation_counts(config)
-        allocation_id = int(config["allocation"] == "oversample")
-        rng = np.random.default_rng(
-            np.random.SeedSequence([
-                self.seed,
-                rep,
-                int(config["participants"]),
-                int(config["communities"]),
-                allocation_id,
-            ])
-        )
-        estimates = []
-        for p, n, k in zip(self.prevalence, people, communities, strict=True):
-            sizes = np.full(k, n // k, dtype=int)
-            sizes[: n % k] += 1
+        streams = np.random.SeedSequence([self.seed, rep]).spawn(4)
+        prevalences, draws = [], []
+        for group, (p, size) in enumerate(zip(self.prevalence, self.pool, strict=True)):
+            community = np.random.default_rng(streams[2 * group])
+            participant = np.random.default_rng(streams[2 * group + 1])
             if self.correlation == 0 or p in {0, 1}:
-                probabilities = np.full(k, p)
+                prevalences.append(np.full(size, float(p)))
             else:
                 concentration = 1 / self.correlation - 1
-                probabilities = rng.beta(p * concentration, (1 - p) * concentration, k)
-            positives = rng.binomial(sizes, probabilities)
+                prevalences.append(
+                    community.beta(p * concentration, (1 - p) * concentration, size)
+                )
+            draws.append(participant.random((self.sampled_cap, self.per_community_cap)))
+        return prevalences, draws
+
+    def generate(
+        self, config: dict[str, Any], *, rep: int = 0
+    ) -> tuple[NDArray[np.float64], SurveyOutcome]:
+        """Survey the replicate's shared population, preserving exact totals.
+
+        Args:
+            config: Survey participant/community totals and allocation.
+            rep: Nonnegative replicate id; all designs share its population.
+
+        Returns:
+            Target group prevalences (realized or fixed, see ``estimand``) and
+            one survey's group estimates.
+
+        Raises:
+            ValueError: If the replicate id or configuration is invalid, or the
+                design exceeds the sampling limits.
+        """
+        people, communities = allocation_counts(config)
+        prevalences, draws = self.population(rep)
+        estimates = []
+        for pi, uniforms, n, k in zip(
+            prevalences, draws, people, communities, strict=True
+        ):
+            sizes = np.full(k, n // k, dtype=int)
+            sizes[: n % k] += 1
+            if k > self.sampled_cap or sizes.max() > self.per_community_cap:
+                msg = "Design exceeds the population's sampling limits"
+                raise ValueError(msg)
+            slots = np.arange(self.per_community_cap) < sizes[:, None]
+            positives = (uniforms[:k] < pi[:k, None]) & slots
             estimates.append(float(positives.sum() / n))
-        return np.array(self.prevalence), SurveyOutcome(
-            np.array(estimates), people, communities
+        truth = (
+            np.array([float(pi.mean()) for pi in prevalences])
+            if self.estimand == "realized"
+            else np.array(self.prevalence, dtype=float)
         )
+        return truth, SurveyOutcome(np.array(estimates), people, communities)
 
 
 @dataclass(frozen=True)
@@ -488,6 +560,95 @@ def precision_rows(
             "n": int(record["n"]),
         })
     return rows
+
+
+def _cost(config: dict[str, Any]) -> float:
+    return float(sum(SurveyCosts().components(config).values()))
+
+
+def _replicate_values(
+    raw: ResultsTable, config: dict[str, Any], name: str
+) -> NDArray[np.float64]:
+    column = raw.observable_names.index(name)
+    pairs = sorted(
+        (meta["rep"], raw.scores[i, column])
+        for i, (row, meta) in enumerate(zip(raw.configs, raw.metadata, strict=True))
+        if row == config
+    )
+    return np.array([value for _, value in pairs], dtype=float)
+
+
+def allocation_contrast(
+    raw: ResultsTable, size: dict[str, int] | None = None
+) -> list[dict[str, Any]]:
+    """Compare oversampling with proportional allocation replicate by replicate.
+
+    Both designs survey the same simulated population in each replicate, so
+    the difference is estimated from paired replicates. The variance ratio is
+    the variance of the paired differences over the sum of the two designs'
+    variances, which is what independent runs with the same marginal
+    distributions would give; values below one show the precision gained by
+    pairing.
+
+    Args:
+        raw: Raw refinement results with ``metadata["rep"]``.
+        size: Participant and community totals; defaults to PAIRED_SIZE.
+
+    Returns:
+        One row per objective and the precision indicator, with the mean
+        difference (oversample minus proportional, in raw units), its 95%
+        paired bootstrap interval, the number of pairs and the variance ratio.
+    """
+    size = dict(PAIRED_SIZE if size is None else size)
+    oversample = {**size, "allocation": "oversample"}
+    proportional = {**size, "allocation": "proportional"}
+    rows: list[dict[str, Any]] = []
+    for name, label in CONTRAST_LABELS.items():
+        result = paired_difference(raw, oversample, proportional, name)
+        a = _replicate_values(raw, oversample, name)
+        b = _replicate_values(raw, proportional, name)
+        spread = a.var(ddof=1) + b.var(ddof=1)
+        rows.append({
+            "objective": name,
+            "label": label,
+            "difference": result.mean,
+            "low": result.lower,
+            "high": result.upper,
+            "n_pairs": result.n_pairs,
+            "variance_ratio": (
+                float((a - b).var(ddof=1) / spread) if spread > 0 else float("nan")
+            ),
+        })
+    return rows
+
+
+def reference_rows(report: PreferenceSweep, objective: str) -> list[dict[str, Any]]:
+    """List paired differences from the sweep's reference design.
+
+    Args:
+        report: Preference report computed with ``paired_reference``.
+        objective: Objective name.
+
+    Returns:
+        One row per other feasible design, best first, with the difference
+        from REFERENCE_DESIGN (design minus reference) and its interval. The
+        intervals hold jointly across designs and objectives (Bonferroni).
+    """
+    labels = {
+        tuple(sorted(config.items())): f"D{i + 1:02d}"
+        for i, config in enumerate(report.summary.configs)
+    }
+    return [
+        {
+            "design": labels[tuple(sorted(item.design_a.items()))],
+            **item.design_a,
+            "difference": item.mean,
+            "low": item.lower,
+            "high": item.upper,
+            "confidence": item.confidence,
+        }
+        for item in report.paired.get(objective, [])
+    ]
 
 
 def _mc_errors(results: ResultsTable, name: str) -> NDArray[np.float64]:
@@ -796,6 +957,79 @@ def plot_precision(report: PreferenceSweep, summary: ResultsTable) -> Figure:
     return fig
 
 
+def plot_allocation(raw: ResultsTable) -> Figure:
+    """Show what oversampling changes at every survey size, replicate by replicate.
+
+    Args:
+        raw: Raw refinement results with ``metadata["rep"]``.
+
+    Returns:
+        Paired differences (oversample minus proportional) with 95% paired
+        bootstrap intervals for each size, one panel per accuracy measure.
+        Intervals are per comparison, not adjusted for multiplicity; the
+        pre-specified size is marked and sizes where oversampling exceeds the
+        budget are faded.
+    """
+    factors = {f.name: f.levels for f in survey_factors()}
+    sizes = [
+        {"participants": n, "communities": k}
+        for n in factors["participants"]
+        for k in factors["communities"]
+    ]
+    contrasts = [
+        {row["objective"]: row for row in allocation_contrast(raw, size)}
+        for size in sizes
+    ]
+    over = [_cost({**size, "allocation": "oversample"}) > BUDGET for size in sizes]
+    names = ("underserved_error_pp", "overall_error_pp", INDICATOR)
+    scales = (1.0, 1.0, 100.0)
+    fig, axes = plt.subplots(1, 3, figsize=(14, 5.8), sharey=True, layout="constrained")
+    positions = np.arange(len(sizes))
+    for ax, name, scale in zip(axes, names, scales, strict=True):
+        for position, size, contrast, faded in zip(
+            positions, sizes, contrasts, over, strict=True
+        ):
+            row = contrast[name]
+            marked = size == PAIRED_SIZE
+            ax.errorbar(
+                scale * row["difference"],
+                position,
+                xerr=[
+                    [scale * (row["difference"] - row["low"])],
+                    [scale * (row["high"] - row["difference"])],
+                ],
+                fmt="D" if marked else "o",
+                color="black" if marked else COLORS["oversample"],
+                alpha=0.35 if faded else 1.0,
+                capsize=3,
+                markersize=7 if marked else 5,
+            )
+        ax.axvline(0, color="#999999", lw=1)
+        ax.set_title(CONTRAST_LABELS[name], fontsize=12)
+        ax.spines[["top", "right"]].set_visible(False)
+    axes[0].set_yticks(
+        positions,
+        [
+            f"{s['participants']} people / {s['communities']} communities"
+            + (" (over budget)" if faded else "")
+            for s, faded in zip(sizes, over, strict=True)
+        ],
+        fontsize=10,
+    )
+    axes[0].invert_yaxis()
+    axes[0].set_xlabel("Change in mean absolute error (points)")
+    axes[1].set_xlabel("Change in mean absolute error (points)")
+    axes[2].set_xlabel("Change in share within target (points)")
+    fig.suptitle(
+        "What does oversampling change, survey by survey?\n"
+        "Oversampling minus proportional allocation in the same simulated "
+        "populations, with 95% paired intervals\n"
+        "Black: pre-specified size. Faded: oversampling exceeds the budget.",
+        fontsize=13,
+    )
+    return fig
+
+
 def plot_cost_components(report: PreferenceSweep, costs: SurveyCosts) -> Figure:
     """Show financial cost components for the preference winners.
 
@@ -846,7 +1080,8 @@ def run_study(
 
     Returns:
         Raw refinement results, per-design results with indicator intervals,
-        and the preference report under the illustrative budget.
+        and the preference report under the illustrative budget, with paired
+        comparisons against REFERENCE_DESIGN when it is within the budget.
 
     Raises:
         ValueError: If REFINE_REPS is below the planned indicator precision.
@@ -880,6 +1115,9 @@ def run_study(
         observables,
         policy=preference_policy(),
         constraints=[Constraint("financial_budget", "cost_usd", "<=", BUDGET)],
+        paired_reference=REFERENCE_DESIGN
+        if _cost(REFERENCE_DESIGN) <= BUDGET
+        else None,
     )
     return raw, summary, report
 
@@ -891,7 +1129,7 @@ def main() -> None:
     """
     started = perf_counter()
     world = SurveyWorld(seed=2026)
-    _, summary, report = run_study(world)
+    raw, summary, report = run_study(world)
     asset_dir = Path(__file__).resolve().parents[1] / "docs" / "assets"
     for name, figure in {
         "population": plot_population(world),
@@ -899,6 +1137,7 @@ def main() -> None:
         "priorities": plot_priorities(report),
         "robustness": plot_robustness(report),
         "precision": plot_precision(report, summary),
+        "allocation": plot_allocation(raw),
         "costs": plot_cost_components(report, SurveyCosts()),
     }.items():
         figure.savefig(asset_dir / f"serosurvey_{name}.png", dpi=160)
@@ -920,6 +1159,13 @@ def main() -> None:
             f"{row['design']}: {100 * row['within_target']:.1f}% within "
             f"±{PRECISION_TARGET_PP:.0f} points "
             f"({100 * row['low']:.1f} to {100 * row['high']:.1f}; n={row['n']})"
+        )
+    size = f"{PAIRED_SIZE['participants']}/{PAIRED_SIZE['communities']}"
+    for row in allocation_contrast(raw):
+        print(
+            f"Oversample - proportional at {size}, {row['label']}: "
+            f"{row['difference']:+.3f} ({row['low']:+.3f} to {row['high']:+.3f}; "
+            f"variance ratio {row['variance_ratio']:.2f})"
         )
     rows = robustness_rows(report)
     steadiest = min(rows, key=itemgetter("max_regret"))
