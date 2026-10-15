@@ -29,3 +29,10 @@ scores, and annotations. Conflicting column names raise an error instead of
 silently overwriting values. Use pandas `frame.to_csv(path, index=False)` to
 export CSV. Call `aggregate_replicates()` explicitly first if you want grid
 results collapsed to design points.
+
+For raw 0/1 outcomes, opt in to fixed-sample interval records with
+`aggregate_replicates(proportion_observables=["recovered"])`. DataFrame
+export includes `meta.proportion_intervals.recovered.low`, `.high`, `.k`,
+`.n`, `.method`, `.confidence` and `.scope`. See the
+[proportion interval guide](../guide/proportion-intervals.md) for sampling
+assumptions and the distinction from sequential or paired inference.

@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Fixed-sample binomial proportion intervals record counts, estimates, bounds
+  and methods: Wilson without optional dependencies and conservative
+  Clopper–Pearson through the lazy `stats` extra. Worst-case Wilson replicate
+  sizing plans interval half-width. Explicit indicator aggregation exports
+  marginal interval metadata, rejecting fractional/non-finite outcomes and
+  duplicate replicate identities; default aggregation is preserved. Sampling,
+  denominator, multiplicity and sequential-stopping limits are documented (#175).
+
 - Result publication retains immutable version-1 generations and selects the
   current generation with one atomic local-filesystem pointer replacement.
   Readers capture and validate a single generation, exposing its identifier;
