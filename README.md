@@ -245,6 +245,15 @@ existing results table through a validated surrogate.
 
 ## Release compatibility
 
+Version 0.4.0 adds decision reporting (`preference_sweep()` with regret,
+practical equivalence and optional paired uncertainty), fixed-sample proportion
+intervals and replicate sizing, versioned result bundles with provenance,
+sequential replication (`run_sequential()`), evaluation caching, incremental
+grid checkpoints with bounded retries, grouped surrogate validation with
+support diagnostics, and the IVAC serosurvey notebook. The `adaptive` extra now
+requires Optuna 4.5 or later, and strict `<`/`>` adaptive constraints treat
+exact equality as infeasible, matching result-table feasibility.
+
 Version 0.3.0 adds replicated and paired studies, uncertainty diagnostics,
 persistent adaptive sessions, checkpointing, and DataFrame export. Existing
 phase-name-only checkpoints are refused; use a fresh checkpoint directory and
@@ -280,7 +289,7 @@ If you use this package in your research, please cite:
   title = {{trade-study}: Multi-Objective Trade-Study Orchestration},
   year = {2026},
   url = {https://github.com/jcm-sci/trade-study},
-  version = {0.3.0},
+  version = {0.4.0},
   doi = {10.5281/zenodo.19599838},
 }
 ```
