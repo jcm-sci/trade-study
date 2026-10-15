@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- `examples/serosurvey_frames.py` adds a sampling-frame design factor to the
+  serosurvey example: a community survey or residual specimens from facilities
+  serving the same communities, with invented facility and specimen costs and a
+  selection-odds model linking specimen provision to antibody status
+  (`SurveyWorld(selection_odds=...)`, `sampling_frame`, `SurveyCosts`
+  residual-frame costs). It runs the 36 designs at four selection-odds values,
+  saves a result bundle with provenance, and reports the winners and the
+  smallest subgroup error each frame reaches within the budget. With odds of
+  one the residual frame reproduces the community survey exactly. The notebook
+  and guide add a section citing the residual-specimen comparisons from India,
+  and CI runs the script (#191).
+
 ## [0.4.0] — 2026-10-15
 
 ### Added

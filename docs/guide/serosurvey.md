@@ -288,6 +288,62 @@ come from the same stream under each context's values. The grid has nine
 points; interpolating between them (for example with `fit_regime_surrogate`
 and its support warnings) is a possible extension.
 
+## Residual specimens or a community survey?
+
+Residual blood specimens collected at health facilities and laboratories can
+cost less than a household survey. In parallel facility and household
+serosurveys in India, Prosperi and colleagues found
+[similar age-specific measles and rubella seroprevalence in adults](https://doi.org/10.1017/S0950268824001389);
+in children, rubella seroprevalence rose similarly in both sources after a
+vaccination campaign, but
+[measles trends were inconsistent between them](https://doi.org/10.1017/S0950268824001353).
+Residual specimens can be biased when the people who provide them differ in
+antibody status from their community, for example when facility use is linked
+to vaccination. Community surveys can also miss people
+([Kostandova and colleagues](https://doi.org/10.1371/journal.pgph.0003072)).
+
+`examples/serosurvey_frames.py` adds a `frame` design factor (`community` or
+`residual`) to the 18 designs. A residual design collects specimens from
+facilities serving the same sampled communities, with the same clustering and
+allocation. It has the same setup cost, a facility coordination cost in place
+of community visits and a lower cost per specimen, all invented. Selection is
+described by one number per group, the selection odds ψ: among residual
+specimens from a community with prevalence π, the odds of antibody positivity
+are ψ times the community odds, so the prevalence among specimens is
+ψπ / (ψπ + 1 − π). Equivalently, antibody-positive people are ψ times as
+likely to contribute a specimen. Specimens use the same random draws as a
+community survey of the same communities, so with ψ = 1 the residual frame
+reproduces the community survey's estimates exactly, at a lower cost. The
+estimand is still the population's realized prevalence.
+
+The script runs the 36 designs at ψ = 1, 1.1, 1.25 and 1.5 in both groups,
+with 1,000 simulated surveys each, and saves a result bundle with the selection
+model, costs and seed in its provenance (`examples/data/serosurvey_frames/`).
+To regenerate it and the figure (about 20 seconds):
+
+```bash
+uv run --extra notebook python -m examples.serosurvey_frames --overwrite
+```
+
+![Residual specimens or a community survey](../assets/serosurvey_frames.png)
+
+In the saved run, residual specimens overstate the underserved group's
+prevalence by about 2.0, 4.6 and 8.1 points at ψ = 1.1, 1.25 and 1.5. Without
+selection bias, and at ψ = 1.1, residual specimens win all three priorities:
+the budget buys 1,200 specimens from 40 facilities, and the smallest subgroup
+MAE within the budget is 2.4 and 2.9 points, against 3.45 for the best
+community survey (300 people in 40 communities, oversampled). At ψ = 1.25 and
+1.5 community surveys win both accuracy priorities, because testing more
+specimens does not remove the bias; mean absolute error cannot fall below the
+absolute bias. The cost-first priority picks the cheapest residual design at
+every ψ, so a cost-first choice accepts the bias.
+
+The model is deliberately simple: one multiplicative selection on antibody
+status, applied equally to both groups, with no structure by age, sex or
+care-seeking, and a complete community frame. Selection cannot be estimated
+from residual specimens alone; a real comparison would estimate it from paired
+facility and community data, as in the studies above.
+
 ## A 15-minute presentation
 
 | Minutes | Content |
@@ -303,7 +359,9 @@ and its support warnings) is a possible extension.
 
 For a 20-minute version, add the precision target (section 7 of the notebook)
 after the regret segment. The paired comparison of oversampling (section 8) can
-serve as a backup slide for questions about allocation.
+serve as a backup slide for questions about allocation, and the
+sampling-frame comparison (section 10) as a backup for questions about
+residual specimens.
 
 The notebook's setup cells are collapsed, and slideshow metadata identifies
 the main narrative and its figures. The model details and cost breakdown are
@@ -318,7 +376,8 @@ nonresponse and sampling-frame assumptions; add validated assay characteristics
 and uncertainty; use local financial and economic costs; and define objectives
 and practical constraints with stakeholders. The example holds assay effects
 fixed and does not equate antibody-status prevalence with complete protection.
-Communities are sampled without selection bias by construction. Real selection
+Community surveys are sampled without selection bias by construction, and
+residual-specimen selection is one assumed number. Real selection
 and nonresponse can introduce bias that more simulation cannot remove.
 
 The notebook's references link to related serosurveillance work and its costing

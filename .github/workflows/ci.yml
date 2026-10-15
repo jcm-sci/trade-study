@@ -25,12 +25,12 @@ jobs:
         run: >-
           uv run ruff format --preview --check src tests
           examples/serosurvey_study.py examples/serosurvey_study.ipynb
-          examples/serosurvey_contexts.py
+          examples/serosurvey_contexts.py examples/serosurvey_frames.py
       - name: Lint
         run: >-
           uv run ruff check --preview src tests
           examples/serosurvey_study.py examples/serosurvey_study.ipynb
-          examples/serosurvey_contexts.py
+          examples/serosurvey_contexts.py examples/serosurvey_frames.py
       - name: Type check (strict)
         run: uv run mypy --strict src
 
@@ -71,6 +71,10 @@ jobs:
         run: >-
           uv run python -m examples.serosurvey_contexts
           --out /tmp/serosurvey_contexts --figure /tmp/serosurvey_contexts.png
+      - name: Run serosurvey sampling-frame grid
+        run: >-
+          uv run python -m examples.serosurvey_frames
+          --out /tmp/serosurvey_frames --figure /tmp/serosurvey_frames.png
       - name: Execute serosurvey demo notebook
         run: >-
           uv run --extra notebook jupyter nbconvert --execute --to notebook
