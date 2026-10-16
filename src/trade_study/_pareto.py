@@ -1,10 +1,14 @@
 """Pareto front extraction and performance indicators.
 
-Wraps pymoo for non-dominated sorting and hypervolume computation.
+Wraps pymoo for non-dominated sorting and hypervolume computation. Every public
+function here needs the optional ``pareto`` extra (``pip install
+'trade-study[pareto]'``) and raises an ``ImportError`` that says so when pymoo is
+not installed.
 """
 
 from __future__ import annotations
 
+import importlib.util
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -13,6 +17,21 @@ from .protocols import Direction
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
+
+_PYMOO_MISSING = (
+    "pymoo is required for Pareto operations but is not installed; "
+    "install it with `pip install 'trade-study[pareto]'`."
+)
+
+
+def _require_pymoo() -> None:
+    """Fail early and clearly when the optional ``pareto`` extra is absent.
+
+    Raises:
+        ImportError: If ``pymoo`` cannot be imported, naming the extra to install.
+    """
+    if importlib.util.find_spec("pymoo") is None:
+        raise ImportError(_PYMOO_MISSING)
 
 
 def _normalize_objectives(
@@ -57,6 +76,7 @@ def extract_front(
     Returns:
         Integer array of row indices on the Pareto front.
     """
+    _require_pymoo()
     from pymoo.util.nds.non_dominated_sorting import (  # type: ignore[import-untyped]
         NonDominatedSorting,
     )
@@ -82,6 +102,7 @@ def pareto_rank(
     Returns:
         Integer array of ranks, shape (n_trials,).
     """
+    _require_pymoo()
     from pymoo.util.nds.non_dominated_sorting import (
         NonDominatedSorting,
     )
@@ -113,6 +134,7 @@ def hypervolume(
     Returns:
         Hypervolume value.
     """
+    _require_pymoo()
     from pymoo.indicators.hv import HV  # type: ignore[import-untyped]
 
     obj = front.copy()
@@ -146,6 +168,7 @@ def igd_plus(
     Returns:
         IGD+ value (lower is better).
     """
+    _require_pymoo()
     from pymoo.indicators.igd_plus import IGDPlus  # type: ignore[import-untyped]
 
     obj = front.copy()

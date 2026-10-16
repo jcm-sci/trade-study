@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib.util
+
 import numpy as np
 import pytest
 
@@ -328,3 +330,39 @@ def test_igd_plus_with_weights() -> None:
     front = np.array([[1.0, 1.0]])
     val = igd_plus(front, front, [Direction.MINIMIZE, Direction.MINIMIZE], [2.0, 3.0])
     assert val == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# Missing optional dependency (#200)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "name", ["extract_front", "pareto_rank", "hypervolume", "igd_plus"]
+)
+def test_missing_pymoo_names_the_extra(
+    monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    """Without pymoo every Pareto function says which extra to install.
+
+    Before the fix the user saw a bare ``ModuleNotFoundError: No module named
+    'pymoo'`` raised from inside the module.
+    """
+    real_find_spec = importlib.util.find_spec
+    monkeypatch.setattr(
+        importlib.util,
+        "find_spec",
+        lambda module, *args, **kwargs: (
+            None if module == "pymoo" else real_find_spec(module, *args, **kwargs)
+        ),
+    )
+    pts = np.array([[1.0, 2.0], [2.0, 1.0]])
+    dirs = [Direction.MINIMIZE, Direction.MINIMIZE]
+    calls = {
+        "extract_front": lambda: extract_front(pts, dirs),
+        "pareto_rank": lambda: pareto_rank(pts, dirs),
+        "hypervolume": lambda: hypervolume(pts, np.array([3.0, 3.0]), dirs),
+        "igd_plus": lambda: igd_plus(pts, pts, dirs),
+    }
+    with pytest.raises(ImportError, match=r"trade-study\[pareto\]"):
+        calls[name]()
