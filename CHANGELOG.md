@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- `extract_front`, `pareto_rank`, `hypervolume` and `igd_plus` raise an
+  `ImportError` that names `pip install 'trade-study[pareto]'` when pymoo is not
+  installed, instead of a bare `ModuleNotFoundError` from inside the module
+  (#200).
+
 ### Added
 
 - `ReplicationPolicy(allocation="fixed")` collects its full prespecified count
