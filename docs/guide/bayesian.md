@@ -1,13 +1,10 @@
 # Bayesian Model Criticism
 
-This tutorial walks through a **scoring-and-stacking** workflow for
-Bayesian models.  It demonstrates the features that set `trade-study`
-apart from conventional hyperparameter optimizers: proper scoring
-rules, calibration assessment, and score-based model averaging.
+This tutorial compares Bayesian models using predictive scores, empirical
+coverage, and score-based model weights.
 
-The underlying model is a conjugate Bayesian linear regression — no
-MCMC sampler or external probabilistic programming library needed,
-only NumPy for the model. The study uses the `examples` extra for scoring,
+The model is a conjugate Bayesian linear regression implemented in NumPy.
+It uses a closed-form posterior. The study uses the `examples` extra for scoring,
 design, optimization and plots.
 
 !!! tip "Run it yourself"
@@ -26,9 +23,8 @@ $y = a + bx + \varepsilon$
 where $\varepsilon \sim \mathcal{N}(0,\sigma_\text{true}^2)$ and the
 true coefficients are known ($a=2$, $b=3$, $\sigma_\text{true}=0.5$).
 
-The design question is: **which prior hyperparameters and sample sizes
-produce well-calibrated, accurate posteriors?**  Specifically, each
-configuration controls three knobs:
+The study examines how prior variance, assumed noise, and sample size affect
+predictive scores and empirical coverage. Each configuration sets three factors:
 
 | Factor | Meaning |
 |--------|---------|
@@ -78,14 +74,13 @@ the conjugate posterior, and returns posterior predictive samples at
 held-out test locations.  The **scorer** evaluates five complementary
 metrics:
 
-- **CRPS** (Continuous Ranked Probability Score) — a proper scoring
-  rule that rewards sharp, well-calibrated predictive distributions.
-- **Energy score** — a multivariate proper scoring rule
+- **CRPS** (Continuous Ranked Probability Score), a univariate proper scoring rule.
+- **Energy score**, a multivariate proper scoring rule
   complementary to CRPS.
-- **Coverage (95 %)** — the fraction of test points whose true value
+- **Coverage (95 %)**, the fraction of test points whose outcome
   falls inside the 95 % posterior predictive interval.
-- **RMSE** — root mean squared error of the posterior mean.
-- **MAE** — mean absolute error of the posterior mean.
+- **RMSE**, root mean squared error of the posterior mean.
+- **MAE**, mean absolute error of the posterior mean.
 
 Marginal CRPS/coverage use `(test_location, member)` samples. Joint energy
 uses `(member, variable)`, so the scorer transposes the same array.
@@ -112,7 +107,7 @@ choose among the five-objective alternatives.
 
 ## Annotations
 
-An `Annotation` attaches external metadata — here, a simple linear
+An `Annotation` attaches external metadata. This example uses a linear
 cost model for the number of observations:
 
 ```python
@@ -162,16 +157,14 @@ a `ResultsTable`:
 There are five objectives. `plot_front` displays pairwise projections of the
 first three (CRPS, energy and coverage), while marking membership of the full
 five-objective front. Projection alone does not determine that membership.
-Models with low CRPS generally have good coverage and low RMSE, with trade-offs
-when noise is misspecified.
+Compare the five objectives jointly when interpreting a model choice.
 
 ### Parallel coordinates
 
 ![Parallel coordinates](../assets/bayesian_parallel.png)
 
-Front designs cluster at moderate prior variance and noise scales
-close to the true value — the region where the model is neither
-overconfident nor excessively vague.
+Each line shows a configuration. Compare its prior variance and assumed noise
+with its predictive scores and empirical coverage.
 
 ### CRPS strip plot
 
@@ -181,8 +174,8 @@ overconfident nor excessively vague.
 
 `hypervolume` measures the dominated volume of the Pareto front;
 `igd_plus` (inverted generational distance plus) measures how close
-the front is to a reference set.  Together they quantify front
-quality — useful for comparing design methods or grid sizes:
+the front is to a reference set. Both depend on the chosen objectives,
+scaling, and references:
 
 ```python
 --8<-- "examples/bayesian_study.py:igd_plus"
@@ -210,8 +203,7 @@ without full Pareto analysis:
 
 ## Sobol grid
 
-`build_grid(method="sobol")` generates quasi-random points with
-better space-filling properties than LHS for low dimensions:
+`build_grid(method="sobol")` generates a quasi-random Sobol design:
 
 ```python
 --8<-- "examples/bayesian_study.py:sobol"
@@ -269,16 +261,14 @@ separate evaluation from analysis:
 
 ## Multi-fidelity workflow
 
-Real-world studies often have an expensive simulator — full MCMC, a
-fine-mesh CFD solver, or an agent-based epidemiological model.
-Running every candidate design at full fidelity is wasteful.  A
-multi-fidelity strategy screens many designs cheaply, then validates
-only the promising ones at high fidelity.
+MCMC fitting, fine-mesh numerical solvers, and agent-based models can be
+expensive to evaluate. A multi-phase study can screen designs with a cheaper
+calculation and re-evaluate a selected subset with a more detailed one.
 
 `Phase` supports this via optional `world` and `scorer` overrides.
 When set, a phase uses its own simulator instead of the `Study`-level
-default.  Here the cheap surrogate draws only 50 posterior samples
-(fast but noisy CRPS estimates), while the validation phase draws
+default. Here the first simulator draws 50 posterior samples,
+while the second phase draws
 2 000:
 
 ```python
@@ -292,18 +282,21 @@ the second re-evaluates those 10 designs with the expensive model.
 This pattern applies whenever fidelity is a computational strategy
 rather than a design factor:
 
-- **Epidemiology** — screen surveillance designs with a deterministic
-  ODE model, validate the best with a stochastic agent-based model.
-- **Engineering** — coarse mesh for broad exploration, fine mesh for
-  the Pareto front.
-- **Forecast model grading** — fast approximate inference for
-  screening, full HMC for final assessment.
+- **Epidemiology.** Screen surveillance designs with a deterministic
+  model and re-evaluate a subset with a stochastic agent-based model.
+- **Engineering.** Explore with a coarse mesh and re-evaluate a subset
+  on a finer mesh.
+- **Forecast model assessment.** Use approximate inference for screening
+  and HMC for a later phase.
+
+Comparisons across fidelities need compatible targets and explicit model
+assumptions. A later phase alone does not validate those assumptions.
 
 ## What to try next
 
 - Try `stack_bayesian()` on models that expose log-likelihood
   (requires `arviz`).
-- Add more phases to the `Study` — e.g. a third phase that
+- Add more phases to the `Study`, such as a third phase that
   re-evaluates with even higher fidelity.
 - Experiment with different `weighted_sum_filter` weight vectors
   to explore different trade-off preferences.

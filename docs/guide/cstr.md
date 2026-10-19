@@ -2,8 +2,7 @@
 
 This tutorial walks through a **multi-phase trade study** for a
 continuous stirred-tank reactor (CSTR) with competing objectives.
-The reactor model uses closed-form Arrhenius kinetics — no dependencies
-beyond numpy.
+The reactor model uses closed-form Arrhenius kinetics and requires only NumPy.
 
 !!! tip "Run it yourself"
 
@@ -17,8 +16,8 @@ beyond numpy.
 ## The problem
 
 A **continuous stirred-tank reactor** (CSTR) is a standard unit
-operation in chemical engineering.  Reactants flow in continuously, mix
-perfectly inside the vessel, and products flow out at steady state.
+operation in chemical engineering. This model assumes continuous inflow,
+perfect mixing inside the vessel, and steady-state outflow.
 
 We model two series reactions:
 
@@ -36,11 +35,11 @@ $$C_A = \frac{C_{A,\text{in}}}{1 + k_1 \tau}, \qquad
 
 where $\tau$ is the mean residence time. From these we define:
 
-- **Conversion**: $X = 1 - C_A / C_{A,\text{in}}$ — fraction of A
+- **Conversion**, $X = 1 - C_A / C_{A,\text{in}}$, is the fraction of A
   consumed (higher is better).
-- **Selectivity**: $S = C_B / (C_{A,\text{in}} - C_A)$ — fraction of
+- **Selectivity**, $S = C_B / (C_{A,\text{in}} - C_A)$, is the fraction of
   converted A that became the *desired* product B (higher is better).
-- **Energy cost**: $0.01(T - 300)^2 + 5 \dot{V}_c$ — a simplified
+- **Energy cost**, $0.01(T - 300)^2 + 5 \dot{V}_c$, is a simplified
   model of heating plus coolant pumping costs (lower is better).
 
 ### Why the objectives conflict
@@ -50,7 +49,8 @@ but also accelerates the unwanted $B \to C$ reaction because
 $E_{a,2} > E_{a,1}$, which *hurts* selectivity.  Meanwhile, both heating and
 cooling cost energy.  There is no single set of operating conditions
 that simultaneously maximizes conversion and selectivity while
-minimizing cost — the solutions lie on a **Pareto front**.
+minimizing cost. Pareto analysis identifies nondominated alternatives among
+the evaluated configurations.
 
 The kinetics plot below shows this conflict directly.  Conversion rises
 monotonically with temperature, but selectivity peaks and then falls
@@ -60,10 +60,8 @@ as the consecutive $B \to C$ reaction accelerates:
 
 ## Ground-truth model
 
-The code below implements the steady-state equations as a pure Python
-function.  Because the model is closed-form, every evaluation takes
-microseconds — ideal for demonstrating `trade-study` without waiting
-for expensive simulations.
+The code below implements the steady-state equations directly in Python.
+The closed-form model avoids a numerical integration step in each evaluation.
 
 ```python
 --8<-- "examples/cstr_study.py:kinetics"
@@ -73,9 +71,9 @@ for expensive simulations.
 
 `trade-study` uses two protocols:
 
-- A **Simulator** produces `(truth, observations)` pairs — here, the
+- A **Simulator** produces `(truth, observations)` pairs. Here, the
   truth is the exact steady-state output and the observations add 2 %
-  Gaussian noise to simulate real measurement uncertainty.
+  Gaussian noise as an assumed measurement model.
 - A **Scorer** extracts the objective values that will populate the
   results table.
 
@@ -92,7 +90,7 @@ Each one becomes a column in the results table.
 --8<-- "examples/cstr_study.py:observables"
 ```
 
-**Factors** declare *what we can control* — here, four continuous
+**Factors** declare what can vary. This example uses four continuous
 operating parameters with physical bounds:
 
 ```python
@@ -123,8 +121,8 @@ which factors influence the objectives most:
 A `Study` chains multiple **Phases**.  Phase 1 explores the design space
 broadly with a 60-point Latin hypercube.  The `top_k_pareto_filter(20)`
 callback selects the 20 best designs (by Pareto rank) and passes them to
-Phase 2.  Phase 2 re-evaluates those 20 designs for confirmation (with
-fresh noise draws), acting as a validation step.
+Phase 2. Phase 2 re-evaluates those 20 designs with fresh noise draws to
+check variation under the same assumed model.
 
 ```python
 --8<-- "examples/cstr_study.py:phases"
@@ -139,8 +137,9 @@ Create a `Study`, call `.run()`, and then query results per phase:
 ```
 
 The results include the Pareto front, per-design scores, and the
-**hypervolume indicator** — a single number summarizing how well the
-front covers the objective space (higher is better):
+**hypervolume indicator**, which measures dominated objective-space volume
+relative to a reference point. Keep objective directions, scaling, and the
+reference point fixed when comparing values.
 
 ```python
 --8<-- "examples/cstr_study.py:results"
@@ -160,7 +159,7 @@ energy cost together when comparing alternatives.
 
 Each line is one reactor configuration, coloured by Pareto membership.
 Front designs cluster at moderate temperatures and longer residence
-times — the operating region where conversion and selectivity are
+times, an operating region where conversion and selectivity are
 both reasonable.
 
 ### Selectivity strip plot

@@ -16,10 +16,9 @@ accuracy against training cost and model complexity.
 
 ## The problem
 
-Machine learning practitioners routinely tune hyperparameters to
-minimize prediction error, but in production **accuracy is not the only
-objective**.  A model that takes 10× longer to train or has 100×
-more parameters may not be worth the marginal RMSE improvement.
+This example compares prediction error, training time, and model size.
+The preferred balance depends on the application's computing and accuracy
+requirements.
 
 This example treats hyperparameter selection as a **multi-objective
 design-of-experiments** problem with three competing objectives:
@@ -32,16 +31,15 @@ design-of-experiments** problem with three competing objectives:
 
 ### Why the objectives conflict
 
-- **More estimators** → lower RMSE, but longer training and more leaves.
-- **Deeper trees** → lower RMSE, but each tree has exponentially more
-  leaves and takes longer to build.
-- **Higher learning rate** → faster convergence with fewer trees, but
-  risks overfitting if not paired with regularization.
-- **Lower subsample** → implicit regularization (less overfitting),
-  but noisier gradient estimates.
+- More estimators increase the number of trees and training work. Their effect
+  on held-out error depends on the data and other settings.
+- Deeper trees permit more leaves and can change both fit and generalization.
+- Learning rate controls each tree's contribution to the prediction.
+- Subsampling changes the training data used for each tree and the variability
+  of gradient estimates.
 
-No single hyperparameter setting wins on all three objectives —
-the solutions lie on a **Pareto front**.
+Pareto analysis identifies configurations that are nondominated across the
+three measured objectives.
 
 ## Dataset
 
@@ -102,29 +100,27 @@ levels so a full factorial grid is tractable
 ## Hyperparameter landscape
 
 Before looking at the Pareto front, it helps to see how RMSE varies
-across the two most influential hyperparameters.  The heatmap below
+across two hyperparameters. The heatmap below
 shows the **best RMSE** achieved at each (n_estimators, max_depth)
 combination, minimised over learning rate and subsample fraction:
 
 ![RMSE heatmap](../assets/sklearn_heatmap.png)
 
-Deeper trees with more estimators push RMSE down, but at a cost in
-training time and model size — which is exactly the trade-off the
-Pareto front quantifies.
+Compare this error surface with training time and leaf count. Additional
+trees or depth do not ensure lower held-out error.
 
 ## Inspect the Pareto front
 
-`extract_front` identifies the subset of designs where **no other
-design is better on all objectives simultaneously**.  Walking along
-the front reveals the fundamental trade-off: lower RMSE costs more
-training time and model complexity.
+`extract_front` retains configurations for which no other evaluated design
+is at least as good on every objective and strictly better on one. The
+front is defined by this grid and the measured outcomes.
 
 ```python
 --8<-- "examples/sklearn_study.py:results"
 ```
 
-The Pareto front typically contains 10–15 designs out of 192.
-A practitioner can then choose based on their priorities — e.g. pick
+Front membership can change with the dataset, seed, and measured training time.
+A practitioner can choose based on priorities, such as selecting
 the lowest-RMSE design if accuracy is paramount, or the fastest design
 that still meets an RMSE threshold.
 
@@ -140,22 +136,21 @@ between RMSE, training time, and leaf count.
 
 ![Parallel coordinates](../assets/sklearn_parallel.png)
 
-Every line is one design, coloured by Pareto membership.  This view
-makes it easy to spot which hyperparameter ranges the front occupies.
+Every line is one design, coloured by Pareto membership. Compare the
+hyperparameter ranges occupied by the evaluated front.
 
 ### RMSE strip plot
 
 ![RMSE strip plot](../assets/sklearn_rmse.png)
 
-Scores for each design, split by whether it is on the Pareto front.
-Front members cluster at the low end of RMSE, confirming they are
-among the best predictive configurations.
+Scores for each design, split by Pareto membership. A design may remain on
+the front because it is faster or smaller despite having higher RMSE.
 
 ## What to try next
 
 - Use `build_grid(factors, method="lhs", n_samples=50)` for a Latin
   hypercube design with continuous hyperparameters.
-- Wrap the sweep in a `Study` with multiple phases — screen first,
+- Wrap the sweep in a `Study` with multiple phases. Screen first,
   then refine the promising region.
 - Add an `Annotation` for dollar cost (e.g., cloud compute pricing per
   second) to include cost as a non-simulated objective.
