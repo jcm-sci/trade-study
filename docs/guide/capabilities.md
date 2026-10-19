@@ -50,7 +50,7 @@ paired contrast retains the 64 shared replicate identities.
 The checked table is included directly from the generated artifact:
 
 ```bash
-uv run --extra dev --with matplotlib==3.11.2 python examples/illustrate_replicated_study.py
+uv run --python 3.12 --extra dev --with matplotlib==3.11.2 python examples/illustrate_replicated_study.py
 just figures-check
 ```
 
