@@ -45,6 +45,9 @@ def stack_scores(
 
     For non-Bayesian models where log-likelihoods aren't available.
     Finds weights w on the simplex that optimize the weighted composite score.
+    The objective is linear in the supplied model scores; an optimum can select
+    one best-mean model. It does not optimize the score of a mixture distribution
+    or the loss of an averaged prediction.
 
     Args:
         score_matrix: Array of shape (n_models, n_test_points) where each
@@ -53,6 +56,11 @@ def stack_scores(
 
     Returns:
         Array of weights, shape (n_models,), summing to 1.
+
+    Examples:
+        >>> weights = stack_scores(np.array([[1.0, 1.0], [3.0, 3.0]]))
+        >>> int(np.argmax(weights)), bool(np.isclose(weights.sum(), 1.0))
+        (0, True)
     """
     from scipy.optimize import minimize  # type: ignore[import-untyped]
 

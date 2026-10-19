@@ -144,13 +144,13 @@ The best-RMSE design tracks every oscillation; the cheapest design
 misses the short-period modes entirely — exactly the trade-off the
 Pareto front quantifies.
 
-### Pareto front scatter matrix
+### Pareto front scatter
 
 ![Pareto front](../assets/monitoring_front.png)
 
-Each dot is one instrument configuration; highlighted points lie on
-the Pareto front.  The RMSE–cost and fidelity–cost panels show the
-clear budget trade-off.
+Each dot is one instrument configuration in a 3-D plot of RMSE, spectral
+fidelity and cost; highlighted points are nondominated within this grid.
+The three coordinates show the sampled budget trade-off.
 
 ### Parallel coordinates
 
@@ -166,7 +166,7 @@ configurations showing the sharpest cost-performance knee.
 
 Scores split by Pareto membership.  Most low-RMSE designs are on the
 front, while dominated designs cluster at higher error — confirming
-the front captures the best achievable accuracy at each cost level.
+the front identifies nondominated alternatives among the evaluated designs.
 
 ## What to try next
 

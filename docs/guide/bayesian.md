@@ -7,7 +7,8 @@ rules, calibration assessment, and score-based model averaging.
 
 The underlying model is a conjugate Bayesian linear regression — no
 MCMC sampler or external probabilistic programming library needed,
-only numpy.
+only NumPy for the model. The study uses the `examples` extra for scoring,
+design, optimization and plots.
 
 !!! tip "Run it yourself"
 
@@ -37,8 +38,8 @@ configuration controls three knobs:
 
 Choosing `noise_scale` too small produces overconfident posteriors;
 too large gives conservative intervals.  A tight prior (`prior_var`
-small) biases the coefficients toward zero.  More data always helps,
-but at a computational cost.
+small) biases the coefficients toward zero.  More observations can reduce parameter uncertainty, but predictive quality also
+depends on the prior and noise assumptions.
 
 ## Ground-truth model
 
@@ -74,7 +75,7 @@ through the test design matrix and adding observation noise.
 
 The **simulator** generates training data from the true model, fits
 the conjugate posterior, and returns posterior predictive samples at
-held-out test locations.  The **scorer** evaluates three complementary
+held-out test locations.  The **scorer** evaluates five complementary
 metrics:
 
 - **CRPS** (Continuous Ranked Probability Score) — a proper scoring
@@ -86,15 +87,20 @@ metrics:
 - **RMSE** — root mean squared error of the posterior mean.
 - **MAE** — mean absolute error of the posterior mean.
 
+Marginal CRPS/coverage use `(test_location, member)` samples. Joint energy
+uses `(member, variable)`, so the scorer transposes the same array.
+
 ```python
 --8<-- "examples/bayesian_study.py:world"
 ```
 
 ## Observables and factors
 
-Coverage is given lower weight (0.5) because a model can trivially
-achieve 100 % coverage by being very wide; CRPS already penalises
-that.
+The example scales energy and coverage by 0.5 and MAE by 0.3. Positive
+scaling preserves Pareto membership; it does not express a preference during
+non-dominated sorting. A wide interval can achieve high empirical coverage while
+CRPS penalizes its spread. Use explicit weighted-sum or preference policies to
+choose among the five-objective alternatives.
 
 ```python
 --8<-- "examples/bayesian_study.py:observables"
@@ -153,10 +159,11 @@ a `ResultsTable`:
 
 ![Pareto front](../assets/bayesian_front.png)
 
-With three objectives the front is a surface; `plot_front` shows all
-pairwise projections.  Models with low CRPS generally have good
-coverage and low RMSE, but there are trade-offs when noise is
-mis-specified.
+There are five objectives. `plot_front` displays pairwise projections of the
+first three (CRPS, energy and coverage), while marking membership of the full
+five-objective front. Projection alone does not determine that membership.
+Models with low CRPS generally have good coverage and low RMSE, with trade-offs
+when noise is misspecified.
 
 ### Parallel coordinates
 
@@ -222,9 +229,13 @@ The `Study` class orchestrates multi-phase workflows.
 
 ## Score-based stacking
 
-`stack_scores` finds simplex-constrained weights that minimise the
-composite MSE across test points.  The stacked ensemble often beats
-every individual model because it smooths over prior mis-specification:
+`stack_scores` minimizes a weighted average of the supplied per-model scores.
+Here those inputs are squared errors. This is a linear objective in the weights,
+so an optimum usually concentrates on a model with the best mean input score.
+It does not optimize the squared error of the combined prediction or promise
+improvement over every model. The example computes that prediction and its RMSE
+separately. These weights use the same test values shown in the comparison; an
+independent evaluation set is needed to assess performance after selection:
 
 ```python
 --8<-- "examples/bayesian_study.py:stacking"
@@ -233,7 +244,9 @@ every individual model because it smooths over prior mis-specification:
 ## Calibration assessment
 
 `coverage_curve` evaluates empirical coverage at many nominal levels.
-A well-calibrated model tracks the diagonal:
+A calibrated predictive distribution should track the diagonal across suitable
+repeated data. This illustration uses one test set after model selection; it is
+an empirical coverage plot, not a powered SBC or calibration certification:
 
 ```python
 --8<-- "examples/bayesian_study.py:calibration"

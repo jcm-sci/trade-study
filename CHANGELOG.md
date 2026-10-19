@@ -9,7 +9,9 @@ All notable changes to this project will be documented in this file.
 - Audit current capabilities against public APIs; correct scope and limitations,
   add executable workflow examples and public API doctests, and document their
   CI and optional-dependency checks. Fix the Bayesian example energy-score axes
-  and execute both monitoring and Bayesian guides in CI. No core runtime API or
+  and execute both monitoring and Bayesian guides in CI. Refresh affected tutorial
+  figures and clarify positive Pareto scaling, score-weight optimization and
+  empirical coverage interpretation. No core runtime API or
   dependency changes.
 
 

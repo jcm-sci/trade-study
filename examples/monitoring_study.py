@@ -439,7 +439,7 @@ def main() -> None:
     _plot_best_vs_cheapest(plt, results.configs[best], results.configs[cheapest])
 
     # ── Trade-study plots ──────────────────────────────────────────
-    # Pareto front scatter (3 objectives → pairwise matrix)
+    # Pareto front scatter in three objective dimensions
     fig_front, _ = plot_front(results, directions)
     fig_front.savefig(
         f"{ASSET_DIR}/monitoring_front.png",

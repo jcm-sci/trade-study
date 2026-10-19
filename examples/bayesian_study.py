@@ -336,7 +336,7 @@ def _run_stacking(results: Any, front_idx: Any, world: Any) -> None:
 
     score_mat = np.array(score_matrix_rows)  # (n_front, n_test)
     stacking_weights = stack_scores(score_mat, maximize=False)
-    print("\nStacking weights (MSE-optimal):")
+    print("\nWeights from mean per-model squared errors:")
     for idx, w in zip(front_idx, stacking_weights, strict=True):
         if w > 0.01:
             cfg = results.configs[idx]
