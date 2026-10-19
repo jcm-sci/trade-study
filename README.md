@@ -245,6 +245,10 @@ existing results table through a validated surrogate.
 
 ## Release compatibility
 
+Version 0.5.0 adds a prespecified fixed replication policy and versioned
+replication-contract metadata. Adaptive allocation remains the default.
+Pareto operations now identify the optional `pareto` extra when it is missing.
+
 Version 0.4.0 adds decision reporting (`preference_sweep()` with regret,
 practical equivalence and optional paired uncertainty), fixed-sample proportion
 intervals and replicate sizing, versioned result bundles with provenance,
@@ -290,7 +294,7 @@ If you use this package in your research, please cite:
   title = {{trade-study}: Multi-Objective Trade-Study Orchestration},
   year = {2026},
   url = {https://github.com/jcm-sci/trade-study},
-  version = {0.4.0},
+  version = {0.5.0},
   doi = {10.5281/zenodo.19599838},
 }
 ```
