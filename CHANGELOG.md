@@ -8,7 +8,8 @@ All notable changes to this project will be documented in this file.
 
 - Add a generated precision-cost figure and summary table to the paired-study
   quickstart, with analytic MSE and Monte Carlo uncertainty clearly separated.
-  Verify source, plotted data and export identities in example CI.
+  Verify source, plotted data and export identities in example CI. Select Python
+  3.12 explicitly when regenerating with the pinned optional plotting version.
 - Audit current capabilities against public APIs; correct scope and limitations,
   add executable workflow examples and public API doctests, and document their
   CI and optional-dependency checks. Fix the Bayesian example energy-score axes
