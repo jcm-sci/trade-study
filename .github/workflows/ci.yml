@@ -35,6 +35,8 @@ jobs:
           examples/replicated_study.py
       - name: Type check (strict)
         run: uv run mypy --strict src
+      - name: Build documentation (strict)
+        run: uv run mkdocs build --strict
 
   test:
     runs-on: ubuntu-latest
