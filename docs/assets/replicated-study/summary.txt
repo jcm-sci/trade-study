@@ -1,0 +1,6 @@
+| Samples / cost | Replicates | Mean squared error | Monte Carlo SE | Analytic mean (1 / n) |
+| ---: | ---: | ---: | ---: | ---: |
+| 8 | 64 | 0.09685 | 0.01636 | 0.12500 |
+| 32 | 64 | 0.03229 | 0.00602 | 0.03125 |
+
+Paired mean difference (32 minus 8): **-0.06456**, using **64** finite pairs. Analytic expected difference: **-0.09375**.
