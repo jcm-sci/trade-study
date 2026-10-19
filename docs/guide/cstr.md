@@ -52,9 +52,8 @@ that simultaneously maximizes conversion and selectivity while
 minimizing cost. Pareto analysis identifies nondominated alternatives among
 the evaluated configurations.
 
-The kinetics plot below shows this conflict directly.  Conversion rises
-monotonically with temperature, but selectivity peaks and then falls
-as the consecutive $B \to C$ reaction accelerates:
+The kinetics plot compares conversion and selectivity across temperature
+under the example's other parameter settings.
 
 ![Reaction kinetics](../assets/cstr_kinetics.png)
 
@@ -158,17 +157,13 @@ energy cost together when comparing alternatives.
 ![Parallel coordinates](../assets/cstr_parallel.png)
 
 Each line is one reactor configuration, coloured by Pareto membership.
-Front designs cluster at moderate temperatures and longer residence
-times, an operating region where conversion and selectivity are
-both reasonable.
+Compare the operating parameters alongside their objective values.
 
 ### Selectivity strip plot
 
 ![Selectivity strip plot](../assets/cstr_selectivity.png)
 
-Scores for each design, split by Pareto status.  Front members span
-the full selectivity range, reflecting different points along the
-conversion–selectivity trade-off.
+Selectivity scores for each evaluated design, split by Pareto membership.
 
 ## What to try next
 

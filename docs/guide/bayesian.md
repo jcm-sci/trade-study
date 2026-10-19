@@ -32,9 +32,9 @@ predictive scores and empirical coverage. Each configuration sets three factors:
 | `noise_scale` | Assumed observation noise $\sigma$ (may disagree with truth) |
 | `n_obs` | Number of training observations |
 
-Choosing `noise_scale` too small produces overconfident posteriors;
-too large gives conservative intervals.  A tight prior (`prior_var`
-small) biases the coefficients toward zero.  More observations can reduce parameter uncertainty, but predictive quality also
+Changing `noise_scale` affects posterior uncertainty and predictive intervals.
+A tight zero-centered prior (`prior_var` small) pulls coefficient estimates
+toward zero. More observations can reduce parameter uncertainty, but predictive quality also
 depends on the prior and noise assumptions.
 
 ## Ground-truth model
