@@ -5,10 +5,8 @@ settings for a remote monitoring station.  The goal is to recover a
 known environmental signal as faithfully as possible while keeping
 station cost low.
 
-Unlike the CSTR and sklearn examples — where the experiment changes
-*what* is built or trained — here the experiment changes *how you
-observe*.  The underlying signal is fixed; only the instrument
-configuration varies.
+The underlying signal is fixed. Designs vary the instrument configuration
+used to observe it.
 
 !!! tip "Run it yourself"
 
@@ -22,8 +20,8 @@ configuration varies.
 ## The problem
 
 A reference environmental signal is measured at a remote station.
-The instrument settings — sample rate, ADC resolution, sensor quality,
-and number of co-located sensors — determine how faithfully the true
+The instrument settings include sample rate, ADC resolution, sensor quality,
+and the number of co-located sensors. These affect how closely the reference
 signal is recovered and how much the station costs.
 
 ### Reference signal
@@ -31,37 +29,36 @@ signal is recovered and how much the station costs.
 A synthetic 24-hour signal with three components (numpy only):
 
 - **Diurnal cycle**: smooth sinusoid with a 24-hour period.
-- **Short-period oscillations**: two higher-frequency modes at periods
-  of 5 minutes and 20 minutes (e.g. tidal harmonics, turbulence).
+- **Short-period oscillations**: two modes at periods of 5 minutes and
+  20 minutes, chosen to illustrate finite sampling resolution.
 - **Correlated noise**: an AR(1) process ($\varphi = 0.995$,
   decorrelation time $\approx 200$ s) representing natural variability.
 
-The signal is generated at 1-second resolution — $N = 86\,400$ samples
+The signal is generated at 1-second resolution, with $N = 86\,400$ samples
 for a full day.
 
 ### Observation model
 
-The instrument applies a chain of realistic transformations:
+The simplified observation model applies four transformations:
 
-1. **Anti-alias filter** — brick-wall low-pass at the Nyquist frequency
+1. **Anti-alias filter.** Brick-wall low-pass at the Nyquist frequency
    of the configured sample rate.
-2. **Decimation** — subsample to the configured interval.
-3. **Quantization** — finite ADC resolution maps continuous values to
+2. **Decimation.** Subsample to the configured interval.
+3. **Quantization.** Finite ADC resolution maps continuous values to
    $2^b$ discrete levels.
-4. **Sensor noise** — additive Gaussian noise whose standard deviation
+4. **Sensor noise.** Additive Gaussian noise whose standard deviation
    depends on sensor grade, reduced by $\sqrt{n}$ averaging when
-   multiple co-located sensors are used.
+   multiple co-located sensors are used. The reduction assumes independent
+   sensor errors.
 
 ### Why the objectives conflict
 
-- **Faster sampling + more bits + better sensors + more averaging** →
-  near-perfect recovery, but station cost explodes.
-- **Cheap configurations** (300 s interval, 8-bit, field-grade,
-  1 sensor) lose the short-period oscillations entirely and quantize
-  the diurnal cycle into visible steps.
-- **Mid-range configs** face a genuine Pareto trade-off: you can spend
-  your budget on temporal resolution *or* sensor quality, but rarely
-  both.
+- Faster sampling, more bits, and additional sensors change reconstruction
+  error and the example's assumed station cost.
+- Coarse sampling removes variation above the Nyquist frequency, while limited
+  ADC resolution introduces quantization error.
+- A budget constrains which combinations of sampling and sensor settings are
+  feasible.
 
 ## Reference signal generation
 
@@ -125,9 +122,9 @@ grid is $5 \times 4 \times 3 \times 4 = 240$ configurations:
 
 ## Inspect the Pareto front
 
-The Pareto front identifies configurations where no other design
-dominates on all three objectives.  Walking along the front reveals
-the fundamental budget trade-off: better signal recovery costs more.
+The Pareto front retains evaluated configurations for which no other design
+is at least as good on every objective and strictly better on one. It describes
+the sampled configurations under this signal and cost model.
 
 ```python
 --8<-- "examples/monitoring_study.py:results"
@@ -140,9 +137,9 @@ ground-truth reference (grey) for the two extreme Pareto members:
 
 ![Best vs cheapest](../assets/monitoring_comparison.png)
 
-The best-RMSE design tracks every oscillation; the cheapest design
-misses the short-period modes entirely — exactly the trade-off the
-Pareto front quantifies.
+Compare the retained short-period variation, quantization, and noise in the
+two configurations. Their differences depend on the assumed signal and
+instrument model.
 
 ### Pareto front scatter
 
@@ -156,23 +153,21 @@ The three coordinates show the sampled budget trade-off.
 
 ![Parallel coordinates](../assets/monitoring_parallel.png)
 
-Every line is one design, coloured by Pareto membership.  Front
-designs span from ultra-cheap to ultra-precise, with the mid-range
-configurations showing the sharpest cost-performance knee.
+Every line is one design, coloured by Pareto membership. The coordinates
+compare reconstruction error, spectral fidelity, and assumed station cost.
 
 ### RMSE strip plot
 
 ![RMSE strip plot](../assets/monitoring_rmse.png)
 
-Scores split by Pareto membership.  Most low-RMSE designs are on the
-front, while dominated designs cluster at higher error — confirming
-the front identifies nondominated alternatives among the evaluated designs.
+Scores split by Pareto membership. A design with higher RMSE may remain on
+the front because it has lower cost or higher spectral fidelity.
 
 ## What to try next
 
 - Use `build_grid(factors, method="lhs", n_samples=60)` for a Latin
   hypercube over continuous factor bounds.
-- Wrap the sweep in a multi-phase `Study` — screen first with a coarse
+- Wrap the sweep in a multi-phase `Study`. Screen first with a coarse
   grid, then refine the promising region.
 - Add an `Annotation` for power consumption or maintenance cost from
   an external costing sheet.

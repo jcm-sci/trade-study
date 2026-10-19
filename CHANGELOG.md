@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Documentation
+
+- Edit introductions and worked guides for plain language. Remove unsupported
+  performance and optimizer comparisons, scope illustrative results to their
+  evaluated designs, and state the Pareto dominance definition explicitly.
+
 ## [0.5.1] - 2026-10-19
 
 ### Fixed

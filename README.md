@@ -8,26 +8,18 @@
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![jcm-sci](https://img.shields.io/badge/jcm--sci-jcmacdonald.dev-blue)](https://jcmacdonald.dev/projects/)
 
-Multi-objective trade-study orchestration: define factors, build
-parameter grids, run hierarchical study phases, and extract Pareto
-fronts — for any domain where you compare alternatives against
-competing objectives.
+`trade-study` compares simulation configurations against multiple objectives.
+Define factors, build parameter grids, run replicated study phases, and
+extract Pareto fronts using a simulator and scorer supplied by the caller.
 
 ## Statement of need
 
-Comparing design alternatives against multiple objectives is a common
-task across scientific simulation, engineering trade-offs, and ML
-hyperparameter tuning. Researchers typically glue together separate
-tools for grid construction, execution, scoring, and Pareto analysis,
-writing ad-hoc scripts that are hard to reproduce or extend to
-multi-phase studies (screening → refinement → benchmark).
-
-`trade-study` provides a single orchestration layer that composes these
-steps into a reproducible, protocol-driven workflow. Users supply a
-`Simulator` (generates data) and a `Scorer` (evaluates it); the
-framework handles grid construction, parallel execution, Pareto
-extraction, and phase chaining. All components are modular and
-optional — use only what you need.
+A study may need grids, simulation runs, scoring, and comparisons across
+several phases. `trade-study` represents these steps with explicit factors,
+objectives, and phase filters. Users supply a `Simulator` to generate data
+and a `Scorer` to evaluate it. The package handles grid construction,
+replicated execution, Pareto extraction, and phase chaining. Optional
+dependencies add parallel execution, sampled designs, and other integrations.
 
 This package targets researchers and practitioners who need:
 
@@ -35,17 +27,20 @@ This package targets researchers and practitioners who need:
 - multi-objective Pareto analysis across heterogeneous factors, and
 - a reproducible Python API that separates domain logic from study orchestration.
 
-## Why trade-study?
+## Study operations
 
-| Need                    | Without trade-study                                 | With trade-study                                                           |
-| ----------------------- | --------------------------------------------------- | -------------------------------------------------------------------------- |
-| Parameter grid          | Manual `itertools.product` or one-off scripts       | `build_grid(factors, method="sobol")` — full factorial, LHS, Sobol, Halton |
-| Multi-objective ranking | Call pymoo directly, handle direction normalization | `extract_front(scores, directions)` — direction-aware                      |
-| Phased studies          | Custom loop with manual filtering between stages    | `Study(phases=[Phase(..., filter_fn=top_k_pareto_filter(k=20)), ...])`     |
-| Adaptive search         | Set up optuna study from scratch                    | `run_adaptive(world, scorer, factors, observables, n_trials=600)`          |
-| Reproducibility         | Scattered scripts, no standard protocol             | `Simulator` / `Scorer` protocols + `save_results()` / `load_results()`     |
+| Operation | Interface |
+| --- | --- |
+| Parameter grid | `build_grid` with full factorial, LHS, Sobol, or Halton designs |
+| Multi-objective ranking | `extract_front(scores, directions)` |
+| Phased studies | `Study`, `Phase`, and phase filters such as `top_k_pareto_filter` |
+| Adaptive search | `run_adaptive` with an Optuna integration |
+| Repeated evaluation and storage | `Simulator` and `Scorer` protocols, `save_results`, and `load_results` |
 
-Existing tools solve pieces of this problem — [optuna](https://optuna.org/) for adaptive optimization, [pymoo](https://pymoo.org/) for multi-objective solvers, [SALib](https://salib.readthedocs.io/) for sensitivity analysis — but none provide the **hierarchical phase orchestration** that connects them into a single study.
+Optional integrations use [Optuna](https://optuna.org/) for adaptive search,
+[pymoo](https://pymoo.org/) for Pareto algorithms, and
+[SALib](https://salib.readthedocs.io/) for sensitivity analysis.
+`Study` and `Phase` connect these operations across stages.
 
 ## Quick start
 

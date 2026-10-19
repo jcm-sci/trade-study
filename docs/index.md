@@ -1,8 +1,8 @@
 # trade-study
 
-Multi-objective trade-study orchestration: experimental design, replicated and
-multi-fidelity execution, Pareto analysis, surrogate-assisted recommendations,
-sensitivity analysis, and model stacking.
+`trade-study` runs replicated simulation studies and compares configurations
+against multiple objectives. It supports design grids, multi-fidelity phases,
+Pareto analysis, response models, sensitivity analysis, and model weighting.
 
 For installation and quick-start examples, see the
 [README](https://github.com/jcm-sci/trade-study#readme).
