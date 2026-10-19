@@ -6,16 +6,16 @@ default: lint test
 
 # Auto-format all Python sources.
 format:
-	uv run ruff format --preview src tests examples/replicated_study.py
+	uv run ruff format --preview src tests examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py
 
 # Lint-fix all Python sources.
 check:
-	uv run ruff check --preview --fix src tests examples/replicated_study.py
+	uv run ruff check --preview --fix src tests examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py
 
 # Check formatting + lint without modifying files (matches CI).
 lint:
-	uv run ruff format --preview --check src tests examples/replicated_study.py
-	uv run ruff check --preview src tests examples/replicated_study.py
+	uv run ruff format --preview --check src tests examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py
+	uv run ruff check --preview src tests examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py
 
 # ── Tests ────────────────────────────────────────────────────────────
 
@@ -36,7 +36,7 @@ mypy:
 # ── CI aggregate ─────────────────────────────────────────────────────
 
 # Run lint, typecheck, and tests with coverage.
-ci: lint mypy coverage
+ci: lint mypy coverage figures-check
 
 # ── Build & publish ──────────────────────────────────────────────────
 
@@ -79,3 +79,7 @@ doctest:
 
 example-replicates:
 	uv run python examples/replicated_study.py
+
+# Requires the Pareto extra; checking needs no plotting dependency.
+figures-check:
+	uv run python examples/illustrate_replicated_study.py --check

@@ -35,6 +35,30 @@ compare sample means using 8 versus 32 observations. A fixed bank of 64 independ
 replicates shares nested sample banks across designs. Costs are exactly 8 and 32;
 errors are compared by replicate before aggregation and Pareto extraction.
 
+![Empirical mean squared error at costs 8 and 32, with one Monte Carlo standard error, compared with the analytic 1/n reference.](../assets/replicated-study/figure.svg)
+
+--8<-- "docs/assets/replicated-study/summary.txt"
+
+For independent standard-normal observations, the sample mean's expected
+squared error is `1 / n`. The finite bank's empirical mean varies around this
+reference. The error bars show one estimated Monte Carlo standard error of
+each mean, rather than a confidence level or a calibration verdict. Both
+sampled designs are nondominated for the observed error and exact cost; the
+paired contrast retains the 64 shared replicate identities.
+
+[Download the vector PDF](../assets/replicated-study/figure.pdf).
+The checked table is included directly from the generated artifact:
+
+```bash
+uv run --extra dev --with matplotlib==3.11.2 python examples/illustrate_replicated_study.py
+just figures-check
+```
+
+The check reruns the actual study, compares the complete plotted data and table,
+and validates source/export fingerprints. It needs the Pareto extra but no
+plotting dependency. Regeneration also saves the
+[plotted data](../assets/replicated-study/data.json).
+
 ```bash
 uv sync --extra dev
 just example-replicates
