@@ -207,7 +207,9 @@ class BayesianRegressionScorer:
             Scores for crps, energy, coverage_95, rmse, and mae.
         """
         crps_val = score("crps", observations["pred_samples"], truth)
-        energy_val = score("energy", observations["pred_samples"], truth)
+        # Energy scores the joint test vector: (ensemble member, variable),
+        # whereas CRPS and coverage use (observation, ensemble member).
+        energy_val = score("energy", observations["pred_samples"].T, truth)
         cov95 = score("coverage", observations["pred_samples"], truth, level=0.95)
         rmse_val = score("rmse", observations["pred_mean"], truth)
         mae_val = score("mae", observations["pred_mean"], truth)
@@ -334,7 +336,7 @@ def _run_stacking(results: Any, front_idx: Any, world: Any) -> None:
 
     score_mat = np.array(score_matrix_rows)  # (n_front, n_test)
     stacking_weights = stack_scores(score_mat, maximize=False)
-    print("\nStacking weights (MSE-optimal):")
+    print("\nWeights from mean per-model squared errors:")
     for idx, w in zip(front_idx, stacking_weights, strict=True):
         if w > 0.01:
             cfg = results.configs[idx]

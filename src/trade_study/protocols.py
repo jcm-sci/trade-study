@@ -31,8 +31,8 @@ class Observable:
     Attributes:
         name: Identifier (e.g. "coverage_95", "relWIS", "wall_seconds").
         direction: Whether lower or higher values are better.
-        weight: Relative importance for weighted Pareto analysis.
-            Default ``1.0`` preserves unweighted behavior.
+        weight: Objective scaling used by weighted analysis. Strictly positive
+            scaling preserves Pareto membership. Default is ``1.0``.
     """
 
     name: str
@@ -68,6 +68,11 @@ class Constraint:
             ``mean + z * se`` (for ``<=``/``<``) or ``mean - z * se`` (for
             ``>=``/``>``) instead of the mean, using each row's Monte Carlo
             standard error (#115). Only inequality operators are allowed.
+
+    Examples:
+        >>> cap = Constraint("budget", "cost", "<=", 10.0)
+        >>> cap.check(8.0), cap.check(12.0)
+        (True, False)
     """
 
     name: str
@@ -469,6 +474,21 @@ class ResultsTable:
             KeyError: If any row's metadata lacks a ``design_point`` key,
                 i.e. this table wasn't produced by ``run_grid(n_reps>1)``.
             ValueError: If requested indicator intervals have invalid inputs.
+
+        Examples:
+            >>> import numpy as np
+            >>> table = ResultsTable(
+            ...     [{"size": 10}, {"size": 10}],
+            ...     np.array([[1.0], [3.0]]),
+            ...     ["loss"],
+            ...     metadata=[
+            ...         {"design_point": 0, "rep": 0},
+            ...         {"design_point": 0, "rep": 1},
+            ...     ],
+            ... )
+            >>> summary = table.aggregate_replicates()
+            >>> summary.scores.tolist()
+            [[2.0]]
         """
         import numpy as np
 

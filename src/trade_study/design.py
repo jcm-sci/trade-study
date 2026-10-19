@@ -183,6 +183,14 @@ def build_grid(
         ValueError: If an unknown design method is specified, or if
             constraints reject more than the maximum oversample budget
             allows.
+
+    Examples:
+        >>> factors = [Factor("size", FactorType.DISCRETE, levels=[10, 20])]
+        >>> build_grid(factors)
+        [{'size': 10}, {'size': 20}]
+        >>> constraint = FactorConstraint(lambda c: c["size"] <= 10)
+        >>> build_grid(factors, constraints=[constraint])
+        [{'size': 10}]
     """
     if method == "full":
         return _full_factorial(factors, constraints=constraints)

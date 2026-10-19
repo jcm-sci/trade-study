@@ -49,55 +49,54 @@ Existing tools solve pieces of this problem — [optuna](https://optuna.org/) fo
 
 ## Quick start
 
-This wiring sketch assumes domain-specific `MySimulator` and `MyScorer`
-implementations like those shown under [Protocols](#protocols). See the worked
-guides in the documentation for complete, executable examples.
+This complete example needs NumPy and the `pareto` extra:
+`pip install 'trade-study[pareto]'`. Each replicate uses the same sample bank
+for both designs, so errors can be compared in pairs.
 
 ```python
+import numpy as np
+
 from trade_study import (
-    Direction,
-    Factor,
-    FactorType,
-    Observable,
-    Phase,
-    Study,
-    build_grid,
-    top_k_pareto_filter,
+    Direction, Factor, FactorType, Observable, build_grid,
+    extract_front, paired_difference, run_grid,
 )
 
-# 1. Define objectives
-accuracy = Observable("accuracy", Direction.MAXIMIZE)
-latency = Observable("latency_ms", Direction.MINIMIZE)
-cost = Observable("cost_usd", Direction.MINIMIZE)
 
-# 2. Define factors and build a design grid
-factors = [
-    Factor("learning_rate", FactorType.CONTINUOUS, bounds=(1e-4, 1e-1)),
-    Factor("backend", FactorType.CATEGORICAL, levels=["A", "B", "C"]),
-]
-grid = build_grid(factors, method="lhs", n_samples=500)
+class SampleMean:
+    def generate(self, config, *, rep=0):
+        rng = np.random.default_rng(np.random.SeedSequence([2026, rep]))
+        return 0.0, rng.normal(size=32)[:config["samples"]]
 
-# 3. Run a hierarchical study
-study = Study(
-    world=MySimulator(),  # implements Simulator protocol
-    scorer=MyScorer(),  # implements Scorer protocol
-    observables=[accuracy, latency, cost],
-    phases=[
-        Phase(
-            "screening",
-            grid=grid,
-            filter_fn=top_k_pareto_filter(k=20),
-        ),
-        Phase("benchmark", grid="carry", filter_fn=None),
-    ],
+
+class ErrorAndCost:
+    def score(self, truth, observed, config):
+        return {"error": float((observed.mean() - truth)**2),
+                "cost": float(config["samples"])}
+
+
+grid = build_grid(
+    [Factor("samples", FactorType.DISCRETE, levels=[8, 32])], method="full"
 )
-study.run(n_jobs=-1)
-
-# 4. Inspect results
-print(study.summary())
-front = study.front("benchmark")  # non-dominated config indices
-study.compare_phases()  # per-phase hypervolume and IGD+ between successive fronts
+observables = [Observable("error", Direction.MINIMIZE),
+               Observable("cost", Direction.MINIMIZE)]
+results = run_grid(SampleMean(), ErrorAndCost(), grid, observables, n_reps=64)
+means = results.aggregate_replicates()
+front = extract_front(means.scores, [o.direction for o in observables])
+contrast = paired_difference(results, {"samples": 32}, {"samples": 8},
+                             "error", seed=2026)
+print(means.scores, front, contrast.mean, contrast.n_pairs)
 ```
+
+`results` retains all 128 trial rows; `means` has one row per design. Bootstrap
+resamples in the paired interval do not increase the number of independent
+replicates. Inspect `n_pairs`: this helper excludes nonfinite pairs. A study
+must define its failure policy before interpreting a success-only comparison.
+Positive objective scaling preserves Pareto membership; use decision preferences
+when choosing among nondominated designs.
+
+The typed standalone version is [replicated_study.py](examples/replicated_study.py).
+The [capabilities and example checks](docs/guide/capabilities.md) map additional
+APIs, optional dependencies, and executable examples.
 
 For a complete 15-minute demonstration with live code and saved figures, see
 the [serosurvey design notebook](examples/serosurvey_study.ipynb) and
@@ -158,6 +157,10 @@ pip install trade-study[design,pareto]
 **Core dependency**: numpy only.
 
 ## API overview
+
+The snippets below show API composition; names such as `world`, `scorer`,
+`run_fn` and `results` stand for caller-supplied objects. Use the complete
+quickstart above or a worked guide to run a study.
 
 ### Design
 

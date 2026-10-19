@@ -149,5 +149,5 @@ convention = "google"
 strict = true
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "-q"
+testpaths = ["src/trade_study", "tests"]
+addopts = "-q --doctest-modules"

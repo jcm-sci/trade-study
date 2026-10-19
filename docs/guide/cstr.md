@@ -146,13 +146,13 @@ front covers the objective space (higher is better):
 --8<-- "examples/cstr_study.py:results"
 ```
 
-### Pareto front scatter matrix
+### Pareto front scatter
 
 ![Pareto front](../assets/cstr_front.png)
 
-With three objectives the front is a surface; `plot_front` shows all
-pairwise projections.  The conversion–selectivity panel is the
-classic Pareto trade-off curve.
+With three objectives, `plot_front` draws a 3-D scatter of the evaluated
+designs, marking the nondominated members. View conversion, selectivity and
+energy cost together when comparing alternatives.
 
 ### Parallel coordinates
 
@@ -173,8 +173,9 @@ conversion–selectivity trade-off.
 
 ## What to try next
 
-- Call `stack_bayesian()` on the Pareto front to compute model-averaging
-  weights.
+- Use `preference_sweep()` to compare reactor designs across explicit
+  objective preferences. Bayesian stacking requires predictive models with
+  log-likelihood information, which these reactor alternatives do not supply.
 - Save results with `save_results()` for later analysis.
 - Combine `feasibility_filter` with `top_k_pareto_filter` across
   successive phases for constrained multi-objective optimisation.

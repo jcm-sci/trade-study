@@ -82,3 +82,12 @@ need to assess. Keep unrelated cleanup and new features in separate PRs.
 All applicable GitHub checks must pass before merge. Branch protection may also
 require an approving review. After merge, remove the feature branch locally and
 on the remote; preserve any unmerged work.
+
+## Executable documentation
+
+Keep capability claims, API docstrings and complete examples in sync. Add a
+small deterministic `Examples:` doctest for a changed public workflow where
+useful; assert independently known equations, shapes or invariants. Larger and
+optional workflows belong in dedicated tests that require their dependencies.
+Run `just doctest` during iteration and the full checks above before a PR.
+See [capabilities and example checks](docs/guide/capabilities.md).

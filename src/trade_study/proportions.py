@@ -97,6 +97,13 @@ def proportion_interval(
     Raises:
         ValueError: If counts, confidence or method are invalid or unsupported.
         ImportError: If Clopper-Pearson is requested without the stats extra.
+
+    Examples:
+        >>> interval = proportion_interval(8, 10)
+        >>> interval.estimate, interval.n, interval.method
+        (0.8, 10, 'wilson')
+        >>> interval.low < interval.estimate < interval.high
+        True
     """
     successes, trials = _count(k, "k"), _count(n, "n")
     if not 0 < trials <= _MAX_TRIALS or successes > trials:
@@ -161,6 +168,12 @@ def replicates_for_half_width(half_width: float, *, confidence: float = 0.95) ->
 
     Raises:
         ValueError: If inputs are invalid or the count exceeds float64 support.
+
+    Examples:
+        >>> replicates_for_half_width(0.05)
+        381
+        >>> replicates_for_half_width(0.10) < replicates_for_half_width(0.05)
+        True
     """
     tail = _tail(confidence, "wilson")
     if (

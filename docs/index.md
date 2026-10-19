@@ -44,3 +44,14 @@ design-of-experiments studies:
 | [Regimes](api/regime.md) | Continuous-regime and bucketed configuration recommendations |
 | [Visualization](api/viz.md) | `plot_front`, `plot_parallel`, `plot_scores`, `plot_calibration` |
 | [I/O](api/io.md) | `load_results`, `save_results` |
+| [Paired comparisons](api/paired.md) | `paired_difference`, `paired_rank` |
+| [Decision reports](api/decision.md) | `preference_sweep`, regret, practical equivalence |
+| [Proportion precision](api/proportions.md) | Wilson intervals and fixed-bank sizing |
+| [Result artifacts](api/artifacts.md) | Versioned bundles and guarded provenance |
+
+`run_sequential` and `ReplicationPolicy` supply fixed/adaptive replication with
+recorded bounds, counts and uncertainty assumptions. `EvaluationCache` and grid
+checkpoints support revision-aware reuse and resume.
+
+See [capabilities and executable examples](guide/capabilities.md) for current interfaces,
+optional dependencies, limitations and the checks that run in CI.
