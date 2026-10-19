@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-19
+
 ### Fixed
 
 - Solve `stack_scores`' linear supplied-score objective directly, selecting the
@@ -25,8 +27,9 @@ All notable changes to this project will be documented in this file.
   CI and optional-dependency checks. Fix the Bayesian example energy-score axes
   and execute both monitoring and Bayesian guides in CI. Refresh affected tutorial
   figures and clarify positive Pareto scaling, score-weight optimization and
-  empirical coverage interpretation. No core runtime API or
-  dependency changes.
+  empirical coverage interpretation. The documentation audit itself did not
+  change core runtime APIs or dependencies; this patch release also includes
+  the stacking fixes above.
 
 
 ## [0.5.0] - 2026-10-19

@@ -254,6 +254,10 @@ existing results table through a validated surrogate.
 
 ## Release compatibility
 
+Version 0.5.1 fixes score-unit sensitivity in `stack_scores` and prevents
+`ensemble_predict` from modifying supplied weights, including read-only arrays
+and views. It also updates executable documentation and illustrated examples.
+
 Version 0.5.0 adds a prespecified fixed replication policy and versioned
 replication-contract metadata. Adaptive allocation remains the default.
 Pareto operations now identify the optional `pareto` extra when it is missing.
@@ -303,7 +307,7 @@ If you use this package in your research, please cite:
   title = {{trade-study}: Multi-Objective Trade-Study Orchestration},
   year = {2026},
   url = {https://github.com/jcm-sci/trade-study},
-  version = {0.5.0},
+  version = {0.5.1},
   doi = {10.5281/zenodo.19599838},
 }
 ```
