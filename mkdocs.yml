@@ -69,6 +69,7 @@ nav:
       - Serosurvey Design (IVAC Notebook): guide/serosurvey.md
       - Monitoring Station Design: guide/monitoring.md
       - Bayesian Model Criticism: guide/bayesian.md
+      - Choosing Ensemble Weights: guide/stacking.md
       - Result Bundles: guide/result-bundles.md
       - Fixed-sample Proportions: guide/proportion-intervals.md
   - API Reference:

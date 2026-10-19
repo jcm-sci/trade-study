@@ -1,7 +1,7 @@
 """Model stacking and ensemble weights.
 
 Bayesian stacking via arviz (for models with log-likelihoods) and
-score-based stacking via scipy (for arbitrary score matrices).
+NumPy score-based selection and ensemble prediction.
 """
 
 from __future__ import annotations
@@ -44,46 +44,50 @@ def stack_scores(
     """Optimize stacking weights from a score matrix.
 
     For non-Bayesian models where log-likelihoods aren't available.
-    Finds weights w on the simplex that optimize the weighted composite score.
-    The objective is linear in the supplied model scores; an optimum can select
-    one best-mean model. It does not optimize the score of a mixture distribution
-    or the loss of an averaged prediction.
+    The objective is linear in the supplied model scores, so the solution puts
+    weight only on models with the best mean score. Exactly equal computed
+    best means split weight uniformly; near ties are not treated as equal.
+    Positive changes of score units preserve the optimum, subject to floating
+    precision. No iterative optimizer or SciPy dependency is needed.
+    This does not optimize the score of a mixture distribution or the loss
+    of an averaged prediction.
 
     Args:
-        score_matrix: Array of shape (n_models, n_test_points) where each
+        score_matrix: Non-empty finite array of shape (n_models, n_test_points). Each
             entry is the score of model i on test point j.
         maximize: If True, maximize the weighted score; if False, minimize.
 
     Returns:
-        Array of weights, shape (n_models,), summing to 1.
+        Non-negative float64 weights, shape (n_models,), summing to 1.
+
+    Raises:
+        ValueError: If scores are empty, non-finite, or not two-dimensional.
+        FloatingPointError: If model means cannot be represented numerically.
 
     Examples:
         >>> weights = stack_scores(np.array([[1.0, 1.0], [3.0, 3.0]]))
-        >>> int(np.argmax(weights)), bool(np.isclose(weights.sum(), 1.0))
-        (0, True)
+        >>> weights.tolist()
+        [1.0, 0.0]
+        >>> stack_scores(1e6 * np.array([[1.0, 1.0], [3.0, 3.0]])).tolist()
+        [1.0, 0.0]
+        >>> stack_scores(np.array([[1.0], [1.0], [3.0]])).tolist()
+        [0.5, 0.5, 0.0]
     """
-    from scipy.optimize import minimize  # type: ignore[import-untyped]
-
-    n_models = score_matrix.shape[0]
-
-    def objective(w: NDArray[np.floating[Any]]) -> float:
-        composite = w @ score_matrix
-        val = float(np.mean(composite))
-        return -val if maximize else val
-
-    # Simplex constraint: weights >= 0 and sum to 1
-    constraints = {"type": "eq", "fun": lambda w: np.sum(w) - 1.0}
-    bounds = [(0.0, 1.0)] * n_models
-    w0 = np.ones(n_models) / n_models
-
-    result = minimize(
-        objective,
-        w0,
-        method="SLSQP",
-        bounds=bounds,
-        constraints=constraints,
-    )
-    return np.asarray(result.x, dtype=np.float64)
+    scores = np.asarray(score_matrix, dtype=np.float64)
+    if scores.ndim != 2 or 0 in scores.shape or not np.all(np.isfinite(scores)):
+        msg = "score_matrix must be a non-empty, finite two-dimensional array"
+        raise ValueError(msg)
+    # Divide before summing and use the extended accumulator where available.
+    # An unrepresentable average must raise instead of producing unchecked weights.
+    try:
+        with np.errstate(over="raise", invalid="raise"):
+            means = np.sum(scores.astype(np.longdouble) / scores.shape[1], axis=1)
+    except FloatingPointError as error:
+        msg = "score_matrix means are not representable; rescale the score units"
+        raise FloatingPointError(msg) from error
+    best = np.max(means) if maximize else np.min(means)
+    selected = means == best
+    return np.asarray(selected / np.count_nonzero(selected), dtype=np.float64)
 
 
 def stack_proportional(
@@ -142,7 +146,9 @@ def ensemble_predict(
     Args:
         predictions: List of prediction arrays, one per model.
             Each should have the same shape.
-        weights: Stacking weights, shape (n_models,).
+        weights: Stacking weights, shape (n_models,). Normalization leaves the
+            supplied array and its backing storage unchanged. Read-only inputs
+            and views are supported.
 
     Returns:
         Weighted average prediction array.
@@ -152,8 +158,12 @@ def ensemble_predict(
         >>> predictions = [np.array([1.0, 2.0]), np.array([3.0, 4.0])]
         >>> ensemble_predict(predictions, np.array([0.25, 0.75])).tolist()
         [2.5, 3.5]
+        >>> weights = np.array([1.0, 3.0])
+        >>> weights.setflags(write=False)
+        >>> ensemble_predict(predictions, weights).tolist(), weights.tolist()
+        ([2.5, 3.5], [1.0, 3.0])
     """
-    w = np.asarray(weights, dtype=np.float64)
+    w = np.array(weights, dtype=np.float64, copy=True)
     w /= w.sum()
     result = np.zeros_like(predictions[0], dtype=np.float64)
     for pred, wi in zip(predictions, w, strict=True):

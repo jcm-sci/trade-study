@@ -19,7 +19,7 @@ scoring, optimization and plotting; statistical estimators belong to the caller.
 | Chain study phases | `Study`, `Phase`, phase filters | Requirements follow each chosen filter/runner; preserve reproducibility between phases. |
 | Optimize or allocate fidelity | `run_adaptive`, `AdaptiveSession`, `run_successive_halving`, `run_hyperband` | `adaptive` for Optuna; persistent sessions retain their declared objective/constraint contract. |
 | Fit validated response models | `fit_surrogate`, `fit_regime_surrogate`, `sensitivity_from_table` | `surrogate` plus optional `design`; inspect grouped validation and support diagnostics. |
-| Score and combine predictions | `score`, `coverage_curve`, `stack_scores`, `stack_proportional`, `stack_bayesian`, `ensemble_predict` | `scoring`/`stacking` as appropriate; direct weighted prediction is core. `stack_scores` optimizes supplied mean scores, not mixture predictive loss. |
+| Score and combine predictions | `score`, `coverage_curve`, `stack_scores`, `stack_proportional`, `stack_bayesian`, `ensemble_predict` | NumPy core selects score weights and combines predictions; scoring/Bayesian integrations use their extras. See [weight contracts](stacking.md). |
 | Cache, resume and publish results | `EvaluationCache`, grid checkpoints, `save_result_bundle`, `load_result_bundle`, `publish_result_bundle` | Core; [bundles](result-bundles.md) require independently supplied expected provenance for guarded reuse. |
 | Export or plot | `ResultsTable.to_dataframe`, plotting helpers | `dataframe` or `viz`. |
 
