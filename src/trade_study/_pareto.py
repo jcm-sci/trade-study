@@ -70,11 +70,17 @@ def extract_front(
     Args:
         scores: Array of shape (n_trials, n_objectives).
         directions: Optimization direction for each objective.
-        weights: Optional per-objective weights.  Larger weight increases
-            the importance of that objective during non-dominated sorting.
+        weights: Optional objective scaling. Strictly positive weights preserve
+            dominance and front membership; they do not encode preferences.
 
     Returns:
         Integer array of row indices on the Pareto front.
+
+    Examples:
+        >>> scores = np.array([[1.0, 1.0], [2.0, 2.0], [0.5, 3.0]])
+        >>> directions = [Direction.MINIMIZE, Direction.MINIMIZE]
+        >>> sorted(extract_front(scores, directions).tolist())
+        [0, 2]
     """
     _require_pymoo()
     from pymoo.util.nds.non_dominated_sorting import (  # type: ignore[import-untyped]
@@ -101,6 +107,11 @@ def pareto_rank(
 
     Returns:
         Integer array of ranks, shape (n_trials,).
+
+    Examples:
+        >>> scores = np.array([[1.0, 1.0], [2.0, 2.0]])
+        >>> pareto_rank(scores, [Direction.MINIMIZE] * 2).tolist()
+        [0, 1]
     """
     _require_pymoo()
     from pymoo.util.nds.non_dominated_sorting import (
@@ -126,8 +137,8 @@ def hypervolume(
 
     Args:
         front: Array of shape (n_points, n_objectives) on the front.
-        ref_point: Reference point (should dominate all front points after
-            direction normalization).
+        ref_point: Reference point worse than all front points in every
+            objective after direction normalization.
         directions: If provided, flips maximize objectives before computing.
         weights: Optional per-objective weights applied after direction flip.
 

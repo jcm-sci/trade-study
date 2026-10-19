@@ -61,6 +61,7 @@ plugins:
 
 nav:
   - Home: index.md
+  - Capabilities and example checks: guide/capabilities.md
   - User Guide:
       - Reactor Design (CSTR): guide/cstr.md
       - Hyperparameter Sweep (sklearn): guide/sklearn.md

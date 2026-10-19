@@ -27,7 +27,11 @@ def score(
     Args:
         metric: One of "crps", "wis", "interval", "energy",
             "rmse", "mae", "coverage", "brier".
-        predictions: Model predictions (ensemble members, quantiles, etc.).
+        predictions: For CRPS/coverage, ``(*cases, members)`` with truth
+            ``(*cases,)``. For energy, ``(*cases, members, variables)`` with
+            truth ``(*cases, variables)``. RMSE/MAE use arrays aligned with
+            truth; interval uses a trailing lower/upper pair. WIS uses
+            trailing interval-level and lower/median/upper dimensions.
         truth: Known ground truth values.
         alpha: Significance level for interval-based scores.
         level: Nominal coverage level for coverage metric.
@@ -37,6 +41,14 @@ def score(
 
     Raises:
         ValueError: If the metric name is not recognized.
+
+    Examples:
+        >>> predictions = np.array([1.0, 3.0])
+        >>> score("rmse", predictions, np.array([0.0, 2.0]))
+        1.0
+        >>> members = np.array([[0.0, 0.0], [2.0, 0.0]])
+        >>> score("energy", members, np.zeros(2))
+        0.5
     """
     simple = {
         "crps": _crps,

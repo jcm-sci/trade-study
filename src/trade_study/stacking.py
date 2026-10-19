@@ -138,6 +138,12 @@ def ensemble_predict(
 
     Returns:
         Weighted average prediction array.
+
+    Examples:
+        >>> import numpy as np
+        >>> predictions = [np.array([1.0, 2.0]), np.array([3.0, 4.0])]
+        >>> ensemble_predict(predictions, np.array([0.25, 0.75])).tolist()
+        [2.5, 3.5]
     """
     w = np.asarray(weights, dtype=np.float64)
     w /= w.sum()

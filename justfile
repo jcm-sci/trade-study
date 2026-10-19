@@ -6,16 +6,16 @@ default: lint test
 
 # Auto-format all Python sources.
 format:
-	uv run ruff format --preview src tests
+	uv run ruff format --preview src tests examples/replicated_study.py
 
 # Lint-fix all Python sources.
 check:
-	uv run ruff check --preview --fix src tests
+	uv run ruff check --preview --fix src tests examples/replicated_study.py
 
 # Check formatting + lint without modifying files (matches CI).
 lint:
-	uv run ruff format --preview --check src tests
-	uv run ruff check --preview src tests
+	uv run ruff format --preview --check src tests examples/replicated_study.py
+	uv run ruff check --preview src tests examples/replicated_study.py
 
 # ── Tests ────────────────────────────────────────────────────────────
 
@@ -55,7 +55,12 @@ build-test:
 	uv venv "$CLEANROOM/venv"
 	uv build --wheel --out-dir "$CLEANROOM/dist"
 	uv pip install --python "$CLEANROOM/venv/bin/python" --no-cache "$CLEANROOM/dist/$(ls "$CLEANROOM/dist/" | grep '\.whl$')[test]"
-	"$CLEANROOM/venv/bin/python" -m pytest tests -q -x
+	cp -R tests examples "$CLEANROOM/"
+	cp README.md "$CLEANROOM/README.md"
+	cd "$CLEANROOM"
+	unset PYTHONPATH
+	"$CLEANROOM/venv/bin/python" -c 'import trade_study; assert "site-packages" in trade_study.__file__'
+	"$CLEANROOM/venv/bin/python" -m pytest --doctest-modules --pyargs trade_study tests -q -x
 	echo "Clean-room test passed."
 
 # Full pre-publish dry run.
@@ -67,3 +72,10 @@ build-all: build-check build-test
 clean:
 	rm -f uv.lock
 	rm -rf .venv dist .*_cache
+
+# API examples plus the actual complete README and standalone study.
+doctest:
+	uv run pytest --doctest-modules src/trade_study tests/test_documentation.py
+
+example-replicates:
+	uv run python examples/replicated_study.py

@@ -207,7 +207,9 @@ class BayesianRegressionScorer:
             Scores for crps, energy, coverage_95, rmse, and mae.
         """
         crps_val = score("crps", observations["pred_samples"], truth)
-        energy_val = score("energy", observations["pred_samples"], truth)
+        # Energy scores the joint test vector: (ensemble member, variable),
+        # whereas CRPS and coverage use (observation, ensemble member).
+        energy_val = score("energy", observations["pred_samples"].T, truth)
         cov95 = score("coverage", observations["pred_samples"], truth, level=0.95)
         rmse_val = score("rmse", observations["pred_mean"], truth)
         mae_val = score("mae", observations["pred_mean"], truth)
