@@ -231,7 +231,10 @@ The `Study` class orchestrates multi-phase workflows.
 
 `stack_scores` minimizes a weighted average of the supplied per-model scores.
 Here those inputs are squared errors. This is a linear objective in the weights,
-so an optimum usually concentrates on a model with the best mean input score.
+so the solution selects models with the best mean input score, splitting weight
+uniformly across exactly tied best means. Selection is independent of positive
+score rescaling, subject to floating precision. See
+[choosing ensemble weights](stacking.md) for the supported inputs and tie policy.
 It does not optimize the squared error of the combined prediction or promise
 improvement over every model. The example computes that prediction and its RMSE
 separately. These weights use the same test values shown in the comparison; an

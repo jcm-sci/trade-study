@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Solve `stack_scores`' linear supplied-score objective directly, selecting the
+  best computed mean and splitting exact best-mean ties uniformly. Preserve
+  the optimum under positive rescaling, reject invalid/empty/non-finite score
+  matrices and avoid unscaled sum overflow. SciPy is no longer needed for this
+  NumPy-core operation (#204).
+- Normalize a separate weight array in `ensemble_predict`, accepting read-only
+  arrays and views without mutating the caller or backing storage (#205).
+
 ### Documentation
 
 - Add a generated precision-cost figure and summary table to the paired-study

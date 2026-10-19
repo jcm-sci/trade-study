@@ -311,3 +311,81 @@ def test_proportional_rejects_invalid_temperature(temperature: float) -> None:
 def test_proportional_rejects_invalid_scores(scores: list) -> None:
     with pytest.raises(ValueError, match="score_matrix"):
         stack_proportional(np.asarray(scores))
+
+
+@pytest.mark.parametrize("scale", [1e-6, 1.0, 1e6, 1e250])
+@pytest.mark.parametrize("offset", [-3.0, 0.0])
+@pytest.mark.parametrize("maximize", [False, True])
+def test_score_optimum_is_invariant_to_positive_rescaling(
+    scale: float, offset: float, *, maximize: bool
+) -> None:
+    """The two-model linear objective has an independently known vertex optimum."""
+    scores = scale * (np.array([[1.0, 1.0], [2.0, 2.0]]) + offset)
+    expected = [0.0, 1.0] if maximize else [1.0, 0.0]
+    np.testing.assert_array_equal(stack_scores(scores, maximize=maximize), expected)
+
+
+@pytest.mark.parametrize("maximize", [False, True])
+def test_score_ties_split_only_among_best_means(*, maximize: bool) -> None:
+    """Distinct rows with equal means tie, independently of their model order."""
+    scores = np.array([[-2.0, 0.0], [-1.0, -1.0], [0.0, 0.0]])
+    expected = np.array([0.0, 0.0, 1.0] if maximize else [0.5, 0.5, 0.0])
+    np.testing.assert_array_equal(stack_scores(scores, maximize=maximize), expected)
+    np.testing.assert_array_equal(
+        stack_scores(scores[::-1], maximize=maximize), expected[::-1]
+    )
+
+
+@pytest.mark.parametrize("maximize", [False, True])
+def test_score_means_do_not_overflow_for_large_finite_scores(*, maximize: bool) -> None:
+    """Finite model means remain meaningful when unscaled row sums overflow."""
+    largest = np.finfo(np.float64).max
+    scores = np.array([[largest / 2] * 3, [largest] * 3])
+    expected = [0.0, 1.0] if maximize else [1.0, 0.0]
+    with np.errstate(all="raise"):
+        np.testing.assert_array_equal(stack_scores(scores, maximize=maximize), expected)
+
+
+@pytest.mark.parametrize(
+    "scores",
+    [
+        np.array(1.0),
+        np.ones(2),
+        np.ones((2, 2, 1)),
+        np.empty((0, 2)),
+        np.empty((2, 0)),
+        np.array([[1.0, np.nan], [2.0, 3.0]]),
+        np.array([[1.0, np.inf], [2.0, 3.0]]),
+        np.array([[1.0, -np.inf], [2.0, 3.0]]),
+    ],
+)
+@pytest.mark.parametrize("maximize", [False, True])
+def test_score_weights_reject_invalid_matrices(
+    scores: np.ndarray, *, maximize: bool
+) -> None:
+    """Unavailable or unsupported scores cannot become plausible uniform weights."""
+    with pytest.raises(ValueError, match="score_matrix"):
+        stack_scores(scores, maximize=maximize)
+
+
+@pytest.mark.parametrize("normalized", [False, True])
+@pytest.mark.parametrize("readonly", [False, True])
+@pytest.mark.parametrize("strided", [False, True])
+def test_ensemble_preserves_weights_and_backing_arrays(
+    *, normalized: bool, readonly: bool, strided: bool
+) -> None:
+    """Readonly inputs and views produce the known mean without caller mutation."""
+    backing = np.array([1.0, 99.0, 3.0, 99.0])
+    weights = backing[::2] if strided else np.array([1.0, 3.0])
+    if normalized:
+        weights /= 4
+    if readonly:
+        weights.setflags(write=False)
+    original_backing, original_weights = backing.copy(), weights.copy()
+    predictions = [np.array([0.0, 2.0]), np.array([2.0, 6.0])]
+    result = ensemble_predict(predictions, weights)
+    np.testing.assert_array_equal(result, [1.5, 5.0])
+    np.testing.assert_array_equal(weights, original_weights)
+    np.testing.assert_array_equal(backing, original_backing)
+    np.testing.assert_array_equal(predictions, [[0.0, 2.0], [2.0, 6.0]])
+    assert weights.flags.writeable == (not readonly)

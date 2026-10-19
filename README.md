@@ -203,11 +203,17 @@ hv = hypervolume(results.scores[front_idx], ref_point, directions)
 ```python
 from trade_study import stack_scores, stack_bayesian, stack_proportional, ensemble_predict
 
-weights = stack_scores(score_matrix)  # simplex-constrained optimization
+weights = stack_scores(score_matrix)  # select best means; split exact ties
 weights = stack_proportional(score_matrix)  # preserve weight across near ties
 weights = stack_bayesian(idata_dict)  # arviz stacking (Yao et al. 2018)
 combined = ensemble_predict(predictions, weights)
 ```
+
+`stack_scores` solves the supplied linear-score objective directly using NumPy;
+positive changes of score units preserve its optimum. `ensemble_predict`
+normalizes a copy of the weights and accepts read-only arrays and views.
+See [choosing ensemble weights](docs/guide/stacking.md) for examples and the
+distinction between input scores and the score of a combined prediction.
 
 ### I/O
 
