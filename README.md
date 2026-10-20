@@ -12,6 +12,9 @@
 Define factors, build parameter grids, run replicated study phases, and
 extract Pareto fronts using a simulator and scorer supplied by the caller.
 
+The experimental [Slurm launch layer](docs/guide/slurm.md) runs explicit Python
+tasks from a frozen commit, with checked imports, task logs and guarded resume.
+
 ## Statement of need
 
 A study may need grids, simulation runs, scoring, and comparisons across

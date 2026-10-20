@@ -72,10 +72,12 @@ nav:
       - Choosing Ensemble Weights: guide/stacking.md
       - Result Bundles: guide/result-bundles.md
       - Fixed-sample Proportions: guide/proportion-intervals.md
+      - Frozen Slurm Launch Plans: guide/slurm.md
   - API Reference:
       - Protocols: api/protocols.md
       - Design: api/design.md
       - Runner: api/runner.md
+      - Frozen Slurm Launch Plans: api/slurm.md
       - Adaptive Sessions: api/session.md
       - Paired Comparisons: api/paired.md
       - Proportion Intervals: api/proportions.md

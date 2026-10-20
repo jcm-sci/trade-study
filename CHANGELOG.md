@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Experimental frozen Slurm task plans (#174): detached commit checkouts,
+  checked project import origins/runtime, immutable Python task argv and external
+  data revisions, single-node CPU packing, per-task logs, locked atomic completion
+  receipts and declared output hashes. Reuse native grid ledgers/adaptive journals
+  inside tasks; refuse changed provenance/artifacts and rerun missing outputs.
+  Check completed dependency exit codes before omitting afterok dependencies.
+  Include a complete analytic normal-mean example and real Git/process/Bash
+  qualification through a scheduler command fixture. Target-cluster qualification
+  and direct distributed runner/session integration remain open.
+
 ### Documentation
 
 - Replace issue and pull-request breadcrumbs in guides and API docstrings with
