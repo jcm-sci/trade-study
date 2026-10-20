@@ -11,6 +11,7 @@ scoring, optimization and plotting; statistical estimators belong to the caller.
 | Declare factors and objectives | `Factor`, `FactorType`, `Observable`, `Direction`, `Constraint` | Core; bounds and feasibility are caller-defined. |
 | Construct designs or screen factors | `build_grid`, `FactorConstraint`, `screen`, `sobol_indices` | Full discrete factorial is core; sampled designs/sensitivity need `design`. |
 | Evaluate a fixed replicated grid | `run_grid`, `ResultsTable.aggregate_replicates` | Core; optional `parallel` for workers. Supply `generate(..., rep=...)` to vary randomness. |
+| Submit frozen Python tasks | `slurm.freeze_checkout`, `prepare_slurm_plan`, `SlurmTask` | [Experimental Slurm launch layer](slurm.md); Git/POSIX/shared environment, checked source/imports and task receipts. Runner integration remains explicit. |
 | Compare paired designs | `paired_difference`, `paired_rank` | Core bootstrap; t intervals need SciPy. Nonfinite pairs are excluded and `n_pairs` is reported. |
 | Allocate replication | `run_sequential`, `ReplicationPolicy` | Fixed or adaptive policy with recorded bounds, counts and assumptions; power is not automatically certified. |
 | Plan fixed proportion precision | `proportion_interval`, `replicates_for_half_width` | [Proportions guide](proportion-intervals.md); Wilson precision is not a power calculation or sequential interval. |
@@ -25,7 +26,8 @@ scoring, optimization and plotting; statistical estimators belong to the caller.
 
 The API reference contains the detailed signatures. `op_infer` composes these
 runners with calibration and inference callbacks; trade-study supplies no
-posterior sampler, model likelihood or HPC scheduler.
+posterior sampler or model likelihood. Slurm remains the external scheduler;
+the optional launch layer runs explicitly declared Python tasks.
 
 ## A complete replicated study
 

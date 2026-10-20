@@ -27,14 +27,14 @@ jobs:
           examples/serosurvey_study.py examples/serosurvey_study.ipynb
           examples/serosurvey_contexts.py examples/serosurvey_frames.py
           examples/replicated_study.py
-          examples/illustration_artifacts.py examples/illustrate_replicated_study.py
+          examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py
       - name: Lint
         run: >-
           uv run ruff check --preview src tests
           examples/serosurvey_study.py examples/serosurvey_study.ipynb
           examples/serosurvey_contexts.py examples/serosurvey_frames.py
           examples/replicated_study.py
-          examples/illustration_artifacts.py examples/illustrate_replicated_study.py
+          examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py
       - name: Type check (strict)
         run: uv run mypy --strict src
       - name: Build documentation (strict)
@@ -71,6 +71,8 @@ jobs:
         run: uv run python examples/replicated_study.py
       - name: Check illustrated quickstart data and exports
         run: uv run python examples/illustrate_replicated_study.py --check
+      - name: Run frozen task example locally
+        run: uv run python examples/frozen_slurm.py "$RUNNER_TEMP/frozen-study"
       - name: Run CSTR example
         run: uv run python examples/cstr_study.py
       - name: Run sklearn example

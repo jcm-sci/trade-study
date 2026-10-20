@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import re
 import runpy
+import sys
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -40,3 +42,20 @@ def test_bayesian_example_scores_joint_members_in_the_right_order():
     # E||X-y|| = 1; E||X-X'|| = 1, hence ES = 1 - 1/2.
     assert np.isclose(result["energy"], 0.5)
     assert np.isclose(result["crps"], 1.0 / 6.0)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX frozen task worker")
+def test_frozen_normal_example_runs_actual_grid_ledgers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    """The complete documented launch example executes its analytic paired bank."""
+    example = runpy.run_path(str(ROOT / "examples/frozen_slurm.py"))
+    output = tmp_path / "frozen-example"
+    monkeypatch.setattr(sys, "argv", ["frozen_slurm.py", str(output)])
+    example["main"]()
+    table = capsys.readouterr().out
+    assert "| 8 | 16 | 0.11837 | 0.12500 |" in table
+    assert "| 32 | 16 | 0.04261 | 0.03125 |" in table
+    # The same complete example can reuse its guarded receipts.
+    example["main"]()
+    assert capsys.readouterr().out == table

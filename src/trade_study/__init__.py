@@ -54,6 +54,14 @@ from .runner import run_adaptive, run_grid, run_hyperband, run_successive_halvin
 from .sensitivity import TableSensitivity, sensitivity_from_table
 from .sequential import ReplicationPolicy, SequentialResult, run_sequential
 from .session import AdaptiveSession, SessionTrial
+from .slurm import (
+    FrozenCheckout,
+    SlurmPlan,
+    SlurmResources,
+    SlurmTask,
+    freeze_checkout,
+    prepare_slurm_plan,
+)
 from .stacking import ensemble_predict, stack_bayesian, stack_proportional, stack_scores
 from .study import (
     Phase,
@@ -74,6 +82,7 @@ __all__ = [
     "Factor",
     "FactorConstraint",
     "FactorType",
+    "FrozenCheckout",
     "Observable",
     "PairedDifference",
     "PartialEvaluator",
@@ -90,6 +99,9 @@ __all__ = [
     "SequentialResult",
     "SessionTrial",
     "Simulator",
+    "SlurmPlan",
+    "SlurmResources",
+    "SlurmTask",
     "Study",
     "SurrogateModel",
     "TableSensitivity",
@@ -103,6 +115,7 @@ __all__ = [
     "feasibility_filter",
     "fit_regime_surrogate",
     "fit_surrogate",
+    "freeze_checkout",
     "hypervolume",
     "igd_plus",
     "load_result_bundle",
@@ -115,6 +128,7 @@ __all__ = [
     "plot_parallel",
     "plot_scores",
     "preference_sweep",
+    "prepare_slurm_plan",
     "proportion_interval",
     "publish_result_bundle",
     "recommend_bucketed_config",
