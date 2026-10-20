@@ -1,4 +1,4 @@
-"""Sampling-frame comparison for the synthetic serosurvey demonstration (#191).
+"""Sampling-frame comparison for the synthetic serosurvey demonstration.
 
 Residual blood specimens collected at health facilities can cost less than a
 community survey, but they may over- or under-represent antibody-positive

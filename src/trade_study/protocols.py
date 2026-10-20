@@ -67,7 +67,7 @@ class Constraint:
             set, :meth:`ResultsTable.feasible` tests the pessimistic bound
             ``mean + z * se`` (for ``<=``/``<``) or ``mean - z * se`` (for
             ``>=``/``>``) instead of the mean, using each row's Monte Carlo
-            standard error (#115). Only inequality operators are allowed.
+            standard error. Only inequality operators are allowed.
 
     Examples:
         >>> cap = Constraint("budget", "cost", "<=", 10.0)
@@ -169,15 +169,14 @@ class Simulator(Protocol):
 
         Note:
             Implementations that want independent draws per replicate under
-            ``run_grid(..., n_reps>1)`` (#112) may additionally accept an
+            ``run_grid(..., n_reps>1)`` may additionally accept an
             optional keyword-only ``rep: int`` parameter (e.g.
             ``def generate(self, config, *, rep=0)``) and vary their own
             randomness by it (a seed derived from ``rep``, a per-rep RNG,
             etc.). :func:`~trade_study.runner.run_grid` detects this via
             introspection and passes the current 0-indexed replicate;
             simulators without a ``rep`` parameter are called unchanged and
-            simply produce identical replicates, matching pre-#112
-            behavior.
+            produce identical replicates when their own random state is unchanged.
         """
         ...
 
@@ -186,7 +185,7 @@ class Simulator(Protocol):
 class PartialEvaluator(Protocol):
     """Protocol for incrementally-evaluable trials.
 
-    Used by successive-halving / Hyperband (#104) to discard unpromising
+    Used by successive-halving / Hyperband to discard unpromising
     configurations after a small fraction of their full budget. The budget
     is opaque to the runner — it may be epochs, MCMC iterations, dataset
     fractions, mesh resolutions, or seconds. Implementations should
@@ -442,7 +441,7 @@ class ResultsTable:
         confidence: float = 0.95,
         proportion_method: str = "wilson",
     ) -> ResultsTable:
-        """Collapse replicate rows into one row per design point (#112).
+        """Collapse replicate rows into one row per design point.
 
         Groups rows by their ``metadata["design_point"]`` key (set by
         :func:`~trade_study.runner.run_grid` when called with

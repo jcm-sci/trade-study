@@ -1,4 +1,4 @@
-"""Paired comparisons between designs under common random numbers (#133).
+"""Paired comparisons between designs under common random numbers.
 
 When a simulator derives each dataset from the replicate index alone, every
 design sees the same datasets, so differences between designs are best

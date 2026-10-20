@@ -146,11 +146,12 @@ mode supplies a paired-contrast interval; ordinary paired post-selection
 inference does not acquire sequential coverage from this metadata.
 
 Missing, non-finite or out-of-bound scores abort instead of producing a pass with
-a reduced denominator. Simulator/scorer exceptions also propagate. This contract
-increment does not persist recoverable failed-attempt artifacts or calculate
+a reduced denominator. Simulator/scorer exceptions also propagate. This runner
+does not persist recoverable failed-attempt artifacts or calculate
 gate-specific power/false-failure thresholds; an aborted run is unavailable,
 and unresolved precision is not relabeled as an assessed power result. Those
-remaining obligations and optional statistical qualification stay in #176.
+remaining obligations and optional statistical qualification are not implemented
+by this runner.
 
 [Howard et al. (2021)](https://arxiv.org/abs/1810.08240) and the authors'
 [confseq implementations](https://github.com/gostevehoward/confseq) describe

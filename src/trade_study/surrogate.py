@@ -1,4 +1,4 @@
-"""Surrogate models over the results table (#82).
+"""Surrogate models over the results table.
 
 Fit a cheap regression model to a :class:`ResultsTable` so observables
 can be predicted at untested configurations. Two backends:
@@ -152,7 +152,7 @@ class SurrogateModel:
         encoder: Factor encoder used at fit time.
         observable_names: Column names of the predicted observables.
         models: One fitted scikit-learn estimator per observable.
-        cv_r2: Per-observable held-out cross-validated R^2 (#114). Missing
+        cv_r2: Per-observable held-out cross-validated R^2. Missing
             for an observable if too few rows were available to run CV
             (fewer than 2 folds); ``float("nan")`` in that case.
         cv_rmse: Per-observable held-out cross-validated RMSE, companion
@@ -273,7 +273,7 @@ class SurrogateModel:
         *,
         warn_support: bool = True,
     ) -> dict[str, NDArray[np.float64]]:
-        """Predictive spread per observable for a batch of configs (#115).
+        """Predictive spread per observable for a batch of configs.
 
         For ``method="gp"`` this is the predictive standard deviation; for
         ``method="rf"`` it is the standard deviation of the individual trees'
@@ -344,7 +344,7 @@ def fit_surrogate(  # ruff: ignore[too-many-arguments]
     contributes to the observables it does have).
 
     After fitting each observable's model on all its available rows,
-    also computes a held-out cross-validated R^2/RMSE (#114) so callers
+    also computes a held-out cross-validated R^2/RMSE so callers
     can tell a well-fit surrogate from one that's effectively guessing
     in a sparse or noisy region of the design space -- neither backend
     reports this on its own (RF's cheap OOB score isn't available for

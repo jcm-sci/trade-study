@@ -1,4 +1,4 @@
-"""Context grid for the synthetic serosurvey demonstration (#188).
+"""Context grid for the synthetic serosurvey demonstration.
 
 The serosurvey example fixes one hypothetical population. Whether oversampling
 or more communities is the better use of a budget depends on context values that
