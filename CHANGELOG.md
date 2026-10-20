@@ -8,9 +8,6 @@ All notable changes to this project will be documented in this file.
 
 - Replace issue and pull-request breadcrumbs in guides and API docstrings with
   current behavior, named interfaces and explicit limitations.
-
-### Documentation
-
 - Edit introductions and worked guides for plain language. Remove unsupported
   performance and optimizer comparisons, scope illustrative results to their
   evaluated designs, and state the Pareto dominance definition explicitly.
