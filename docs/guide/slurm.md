@@ -20,6 +20,8 @@ For an editable install, install the project from the **frozen** checkout.
 The package guard refuses an import resolving to the submitting checkout.
 Use an explicit shared interpreter path, preserving its virtual-environment
 symlink; resolving that symlink to a base Python binary would lose the environment.
+The linked base interpreter and its libraries must also exist on the compute
+nodes. A successful login-node import alone cannot establish that availability.
 
 ```python
 from trade_study.slurm import (
@@ -127,5 +129,13 @@ Required tests execute real Git worktrees, Python subprocesses and grid ledgers,
 including failed tasks, overlapping submissions, missing/corrupted output files,
 wrong imports, source/manifest/launcher changes and a fixture that runs the actual
 generated batch script through native Bash. The fixture checks scheduler command
-arguments and dependency failures. These tests do not constitute a real Slurm
-cluster qualification or a general distributed adaptive executor.
+arguments and dependency failures.
+
+A small Rockfish pilot used Python 3.11.9, NumPy 2.0, two CPUs, 1 GB and a
+two-minute limit. It reproduced the table above, then reused the same task
+receipts in a second successful allocation. A dependency on a failed job was
+refused before submission. An initial attempt failed before running tasks when
+its virtual environment pointed to a login-only interpreter; selecting the
+shared Python module resolved that site configuration. This single-site pilot
+supports the launch example, rather than general cluster qualification or a
+complete distributed adaptive executor.
