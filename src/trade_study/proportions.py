@@ -1,4 +1,4 @@
-"""Fixed-sample binomial intervals and Wilson precision planning (#175)."""
+"""Fixed-sample binomial intervals and Wilson precision planning."""
 
 from __future__ import annotations
 

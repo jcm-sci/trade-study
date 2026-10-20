@@ -190,7 +190,7 @@ def run_grid(  # ruff: ignore[too-many-arguments]
         observables: Observable definitions (for column ordering).
         annotations: Optional external annotations (costs, etc.).
         n_jobs: Number of parallel workers (-1 for all CPUs).
-        n_reps: Number of times to evaluate each design point (#112).
+        n_reps: Number of times to evaluate each design point.
             When greater than 1 and ``world.generate`` accepts a ``rep``
             keyword argument, each replicate is called with its 0-indexed
             ``rep`` so the simulator can vary its own randomness; a
@@ -333,8 +333,8 @@ def run_adaptive(
         observables: Observable definitions.
         n_trials: Number of optuna trials.
         n_reps: Replicate draws averaged into each trial's objective
-            values before Optuna sees them (#122), the same convention
-            ``run_grid(..., n_reps>1)`` uses (#112) -- a simulator opts in
+            values before Optuna sees them, the same convention
+            ``run_grid(..., n_reps>1)`` uses -- a simulator opts in
             via an optional keyword-only ``rep`` parameter on
             ``generate``, detected via introspection. Without it, NSGA-II
             can select a "best" config that's just a lucky draw for one
@@ -458,7 +458,7 @@ def run_successive_halving(
     metric: str,
     mode: str = "min",
 ) -> ResultsTable:
-    """Successive-halving multi-fidelity early-stopping (#104).
+    """Successive-halving multi-fidelity early-stopping.
 
     Evaluates every trial at the lowest rung, keeps the top ``1/eta`` by
     ``metric`` (according to ``mode``), promotes survivors to the next
@@ -591,7 +591,7 @@ def run_hyperband(
     metric: str,
     mode: str = "min",
 ) -> ResultsTable:
-    """Hyperband: multi-bracket successive-halving (#104).
+    """Hyperband: multi-bracket successive-halving.
 
     Wraps :func:`run_successive_halving` with the bracket schedule from
     Li et al. (2017). Each bracket trades off the number of initial

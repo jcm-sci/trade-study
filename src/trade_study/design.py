@@ -46,7 +46,7 @@ class Factor:
         bounds: For continuous: (low, high) tuple.
         log_scale: For continuous factors with positive bounds: sample and
             model the factor uniformly in ``log`` space, for parameters that
-            span orders of magnitude (#131).
+            span orders of magnitude.
     """
 
     name: str
@@ -576,8 +576,8 @@ def screen(
             controls the base sample size *N*; the total number of model
             evaluations is *N* x (num_vars + 2).
         n_reps: Replicate draws averaged into each sampled point's scores
-            before SALib sees them (#122), the same convention
-            ``run_grid(..., n_reps>1)`` uses (#112) -- ``run_fn`` opts in
+            before SALib sees them, the same convention
+            ``run_grid(..., n_reps>1)`` uses -- ``run_fn`` opts in
             via an optional keyword-only ``rep`` parameter, detected via
             introspection. Without it, a single stochastic draw per point
             can produce importance estimates that are artifacts of that
@@ -718,7 +718,7 @@ def sobol_indices(
     n_reps: int = 1,
     seed: int = 42,
 ) -> dict[str, tuple[NDArray[np.floating[Any]], NDArray[np.floating[Any]]]]:
-    """Sobol first- and total-order sensitivity indices (#120).
+    """Sobol first- and total-order sensitivity indices.
 
     Like ``screen(method="sobol")``, but returns both S1 (first-order) and
     ST (total-order) per observable instead of discarding ST. ``ST - S1``
@@ -735,7 +735,7 @@ def sobol_indices(
         n_samples: Base sample size *N* for the Saltelli design; total
             evaluations are *N* x (2 x num_vars + 2).
         n_reps: Replicate draws averaged into each sampled point's scores
-            before SALib sees them (#122) -- see ``screen()``'s ``n_reps``
+            before SALib sees them -- see ``screen()``'s ``n_reps``
             for the full rationale and the ``run_fn`` opt-in convention.
             Default 1 (a single draw per point, today's behavior).
         seed: Random seed.
@@ -792,7 +792,7 @@ def reduce_factors(
 
     Warns:
         UserWarning: If every observable's importance is NaN for one or
-            more factors (#119) -- those factors are dropped (there's no
+            more factors -- those factors are dropped (there's no
             valid data to compare against ``threshold``), but that
             reflects missing data, not confirmed unimportance.
     """

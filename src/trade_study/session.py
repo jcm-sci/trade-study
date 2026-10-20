@@ -1,4 +1,4 @@
-"""Batched ask/tell adaptive search with external evaluation (#132).
+"""Batched ask/tell adaptive search with external evaluation.
 
 ``run_adaptive`` evaluates each trial in-process. Expensive studies run their
 evaluations elsewhere -- for example as cluster job arrays built from a

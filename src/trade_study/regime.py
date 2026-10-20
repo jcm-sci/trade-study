@@ -1,4 +1,4 @@
-"""Regime-conditional surrogate models (#105).
+"""Regime-conditional surrogate models.
 
 Builds on :mod:`trade_study.surrogate` to share information across
 regime buckets. Regime descriptors (e.g. ``n_samples``, ``noise``) are
@@ -90,7 +90,7 @@ class RegimeSurrogate:
 
     @property
     def cv_r2(self) -> dict[str, float]:
-        """Per-observable held-out cross-validated R^2 (#114).
+        """Per-observable held-out cross-validated R^2.
 
         Returns:
             Mapping from observable name to cross-validated R^2, from the
@@ -100,7 +100,7 @@ class RegimeSurrogate:
 
     @property
     def cv_rmse(self) -> dict[str, float]:
-        """Per-observable held-out cross-validated RMSE (#114).
+        """Per-observable held-out cross-validated RMSE.
 
         Returns:
             Mapping from observable name to cross-validated RMSE, from
@@ -225,7 +225,7 @@ class RegimeSurrogate:
         ``prediction + risk * spread`` when minimizing and
         ``prediction - risk * spread`` when maximizing, where ``spread`` is
         :meth:`SurrogateModel.spread_batch`; this avoids picking the
-        candidate the surrogate is most optimistically wrong about (#115).
+        candidate the surrogate is most optimistically wrong about.
 
         Args:
             regime: Mapping of regime-feature names to values.
@@ -237,8 +237,8 @@ class RegimeSurrogate:
             seed: Seed for the Sobol' sampler.
             candidates: Optional explicit list of design-factor configs
                 to score; if given, overrides ``n_candidates``.
-            warn_below_r2: Warn if ``objective``'s cross-validated R^2
-                (#114) is below this threshold, so a caller optimizing
+            warn_below_r2: Warn if ``objective``'s cross-validated R^2 is
+                below this threshold, so a caller optimizing
                 against a poorly-fit surrogate gets a signal right at the
                 point of use, not just buried in fit-time logs. Pass
                 ``None`` to disable.
@@ -332,8 +332,8 @@ def fit_regime_surrogate(  # ruff: ignore[too-many-arguments]
             :func:`trade_study.fit_surrogate`.
         seed: Random seed forwarded to the backend estimators.
         n_estimators: Number of trees for the ``"rf"`` backend.
-        cv_folds: Cross-validation folds for the held-out accuracy check
-            (#114). See :func:`trade_study.fit_surrogate`.
+        cv_folds: Cross-validation folds for the held-out accuracy check. See
+            :func:`trade_study.fit_surrogate`.
         warn_below_r2: Warn if any observable's cross-validated R^2 falls
             below this threshold. See :func:`trade_study.fit_surrogate`.
         cv_group_by: ``"regime"`` holds out complete regime descriptor tuples;
@@ -404,7 +404,7 @@ def recommend_per_regime(  # ruff: ignore[too-many-arguments]
     n_reps: int = 1,
     seed: int = 42,
 ) -> dict[str, dict[str, Any]]:
-    """Find each regime's best config via independent adaptive search (#123).
+    """Find each regime's best config via independent adaptive search.
 
     Runs :func:`~trade_study.run_adaptive` (NSGA-II) independently per
     regime and picks each regime's best-found config by ``primary``. This
@@ -428,7 +428,7 @@ def recommend_per_regime(  # ruff: ignore[too-many-arguments]
             best trial (the one minimizing/maximizing it, per that
             observable's ``direction``) from ``run_adaptive``'s Pareto set.
         n_trials: Optuna trials per regime.
-        n_reps: Replicate draws averaged per trial (#122) -- see
+        n_reps: Replicate draws averaged per trial -- see
             :func:`~trade_study.run_adaptive`'s ``n_reps`` for the full
             rationale. Default 1 (a single draw per trial).
         seed: Random seed forwarded to each regime's ``run_adaptive`` call.
@@ -477,7 +477,7 @@ def aggregate_bucketed_config(
     bucket_fn: Callable[[str, dict[str, Any]], str],
     factors: list[Factor],
 ) -> dict[str, dict[str, Any]]:
-    """Aggregate per-regime best configs into named buckets (#123).
+    """Aggregate per-regime best configs into named buckets.
 
     Pure post-processing over :func:`recommend_per_regime`'s output --
     groups regimes into named buckets via ``bucket_fn`` and aggregates
@@ -529,7 +529,7 @@ def recommend_bucketed_config(  # ruff: ignore[too-many-arguments]
     n_reps: int = 1,
     seed: int = 42,
 ) -> dict[str, dict[str, Any]]:
-    """Recommend a config per named bucket via per-regime adaptive search (#123).
+    """Recommend a config per named bucket via per-regime adaptive search.
 
     The discrete counterpart to :func:`fit_regime_surrogate`: for a
     handful of named regimes too sparse (and too far outside any
@@ -563,7 +563,7 @@ def recommend_bucketed_config(  # ruff: ignore[too-many-arguments]
             best trial (the one minimizing/maximizing it, per that
             observable's ``direction``) from ``run_adaptive``'s Pareto set.
         n_trials: Optuna trials per regime.
-        n_reps: Replicate draws averaged per trial (#122) -- see
+        n_reps: Replicate draws averaged per trial -- see
             :func:`~trade_study.run_adaptive`'s ``n_reps`` for the full
             rationale. Default 1 (a single draw per trial).
         seed: Random seed forwarded to each regime's ``run_adaptive`` call.

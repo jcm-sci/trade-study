@@ -226,8 +226,8 @@ class Study:
             n_jobs: Number of parallel workers for grid phases.
             callback: Optional progress callback invoked after each trial
                 with ``(trial_index, total_trials, trial_result)``.
-            checkpoint_dir: Optional directory for per-phase checkpoints
-                (#75). Each completed phase is saved there; on a rerun,
+            checkpoint_dir: Optional directory for per-phase checkpoints.
+                Each completed phase is saved there; on a rerun,
                 phases already on disk are loaded instead of run, and
                 filters are replayed on them. Results produced elsewhere
                 (for example reduced from cluster shards) can be written
@@ -313,8 +313,8 @@ class Study:
     def _carry(self, phase: Phase) -> list[dict[str, Any]] | None:
         """Return the configs a phase passes on, or ``None`` when terminal.
 
-        Filters run on aggregated per-design-point scores when replicated
-        (#112), so filters like ``top_k_pareto_filter`` rank design points
+        Filters run on aggregated per-design-point scores when replicated, so
+        filters like ``top_k_pareto_filter`` rank design points
         rather than individual noisy replicates; the raw per-replicate table
         is kept in the study results.
         """
@@ -388,7 +388,7 @@ class Study:
         return result
 
     def save(self, path: str | Path) -> None:
-        """Save every completed phase's results as a checkpoint (#75).
+        """Save every completed phase's results as a checkpoint.
 
         Args:
             path: Checkpoint directory, compatible with
@@ -465,7 +465,7 @@ class Study:
         self,
         ref_point: NDArray[np.floating[Any]] | None = None,
     ) -> list[dict[str, Any]]:
-        """Compare the fronts of the completed phases (#81).
+        """Compare the fronts of the completed phases.
 
         Each phase is summarized over its design points: replicate rows are
         averaged first when the phase ran with ``n_reps > 1``, as for

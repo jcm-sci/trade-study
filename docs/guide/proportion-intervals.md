@@ -118,8 +118,8 @@ replicate identifiers cannot establish independence. In particular:
   study provenance rather than silently selecting successful runs.
 - Repeated checking, result-dependent stopping, selecting the best design
   and simultaneous comparisons do not inherit the nominal fixed-sample
-  coverage. [Issue #176](https://github.com/jcm-sci/trade-study/issues/176)
-  owns sequential interval/stopping guarantees. These helpers do not change
+  coverage. Use the separately documented [sequential runner](../api/runner.md)
+  for its supported interval/stopping contract. These fixed-sample helpers do not change
   `run_sequential`, `Constraint.confidence` or adaptive selection behavior.
 
 Monte Carlo uncertainty describes the replication experiment. It does not

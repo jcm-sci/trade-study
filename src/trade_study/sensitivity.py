@@ -1,4 +1,4 @@
-"""Post-hoc sensitivity analysis from an already-collected ResultsTable (#113).
+"""Post-hoc sensitivity analysis from an already-collected ResultsTable.
 
 ``screen()`` (see :mod:`trade_study.design`) needs a live, re-runnable
 simulator and a proper Saltelli/Morris sample design -- neither of which an
@@ -15,7 +15,7 @@ indices -- which, unlike a marginal Spearman correlation, correctly detect
 non-monotonic effects -- without any new simulator evaluations.
 
 The result is only as trustworthy as the surrogate it comes from. Check
-:attr:`TableSensitivity.surrogate_cv_r2` (see #114) before trusting the
+:attr:`TableSensitivity.surrogate_cv_r2` before trusting the
 indices for an observable with a poor cross-validated fit.
 """
 
@@ -46,7 +46,7 @@ class TableSensitivity:
             :func:`trade_study.screen` reports (i.e. continuous factors
             only, in the order they appear in the ``factors`` argument).
         surrogate_cv_r2: Per-observable cross-validated R^2 of the
-            surrogate the indices were computed from (#114). A low value
+            surrogate the indices were computed from. A low value
             means the sensitivity indices reflect a poorly learned
             response surface, not necessarily the true system -- treat
             such observables' indices as unreliable.
