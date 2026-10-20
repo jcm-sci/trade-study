@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-20
+
 ### Added
 
 - Experimental frozen Slurm task plans (#174): detached commit checkouts,
@@ -13,8 +15,10 @@ All notable changes to this project will be documented in this file.
   inside tasks; refuse changed provenance/artifacts and rerun missing outputs.
   Check completed dependency exit codes before omitting afterok dependencies.
   Include a complete analytic normal-mean example and real Git/process/Bash
-  qualification through a scheduler command fixture. Target-cluster qualification
-  and direct distributed runner/session integration remain open.
+  qualification through a scheduler command fixture. A two-CPU Rockfish pilot
+  also verified task execution, completed-job receipt reuse and failed-dependency
+  refusal. Broader target-site qualification and direct distributed runner/session
+  integration remain open.
 
 ### Documentation
 
