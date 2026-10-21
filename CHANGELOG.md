@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Documentation
+
+- Record execution ownership, host-result boundaries, Fisher-screen integration
+  requirements and separate qualification targets for penalized stacking and EVSI.
+
 ## [0.6.0] - 2026-10-20
 
 ### Added
