@@ -76,13 +76,14 @@ decision value. See the [EVSI formulation](https://doi.org/10.1137/19M1284981).
 
 ## Sequence
 
-High-priority follow-up: make table sensitivity explicit about discrete factors
-and grouped surrogate validation. Active consumers need a refusal of pooled
-omitted inputs, observed-stratum conditioning, retained validation/scope and a
-direct factorial/paired-contrast route. Configuration-factor grouping and explicit
-dataset/replicate partitions answer distinct validation questions. Complete this bounded work
-before remaining optional solver integrations; see
-[conditional table sensitivity](table-sensitivity.md).
+The high-priority [conditional table-sensitivity](table-sensitivity.md) increment
+is implemented: pooled varying omitted inputs are refused, observed-stratum
+conditioning and retained scope/validation are available, and direct discrete
+contrasts reuse existing paired helpers. Configuration-factor grouping and
+explicit dataset/replicate partitions answer distinct validation questions.
+The [Sobol budget](../api/design.md#sobol-evaluation-budgets) records actual callback
+costs before consumers price another screen. Remaining statistical and solver
+extensions keep their separately qualified scope.
 
 First reconcile overlapping issues and establish numerical-package baselines.
 Then integrate forward/provenance and shared statistical interfaces. Add Fisher
