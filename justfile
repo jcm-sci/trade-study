@@ -6,16 +6,16 @@ default: lint test
 
 # Auto-format all Python sources.
 format:
-	uv run ruff format --preview src tests examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py
+	uv run ruff format --preview src tests examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py examples/fisher_op_stack.py
 
 # Lint-fix all Python sources.
 check:
-	uv run ruff check --preview --fix src tests examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py
+	uv run ruff check --preview --fix src tests examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py examples/fisher_op_stack.py
 
 # Check formatting + lint without modifying files (matches CI).
 lint:
-	uv run ruff format --preview --check src tests examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py
-	uv run ruff check --preview src tests examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py
+	uv run ruff format --preview --check src tests examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py examples/fisher_op_stack.py
+	uv run ruff check --preview src tests examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py examples/fisher_op_stack.py
 
 # ── Tests ────────────────────────────────────────────────────────────
 
@@ -57,6 +57,8 @@ build-test:
 	uv pip install --python "$CLEANROOM/venv/bin/python" --no-cache "$CLEANROOM/dist/$(ls "$CLEANROOM/dist/" | grep '\.whl$')[test]"
 	cp -R tests examples "$CLEANROOM/"
 	cp README.md "$CLEANROOM/README.md"
+	mkdir -p "$CLEANROOM/docs/guide"
+	cp docs/guide/fisher.md "$CLEANROOM/docs/guide/"
 	cd "$CLEANROOM"
 	unset PYTHONPATH
 	"$CLEANROOM/venv/bin/python" -c 'import trade_study; assert "site-packages" in trade_study.__file__'

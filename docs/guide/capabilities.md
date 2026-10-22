@@ -14,6 +14,7 @@ scoring, optimization and plotting; statistical estimators belong to the caller.
 | Submit frozen Python tasks | `slurm.freeze_checkout`, `prepare_slurm_plan`, `SlurmTask` | [Experimental Slurm launch layer](slurm.md); Git/POSIX/shared environment, checked source/imports and task receipts. Runner integration remains explicit. |
 | Compare paired designs | `paired_difference`, `paired_rank` | Core bootstrap; t intervals need SciPy. Nonfinite pairs are excluded and `n_pairs` is reported. |
 | Allocate replication | `run_sequential`, `ReplicationPolicy` | Fixed or adaptive policy with recorded bounds, counts and assumptions; power is not automatically certified. |
+| Screen local information | `screen_fisher`, `FisherScreenPolicy`, `fisher_screen_counts` | Caller-qualified bounded host matrices, declared directions, existing constraints and retained unavailable outcomes; [scope and example](fisher.md). |
 | Plan fixed proportion precision | `proportion_interval`, `replicates_for_half_width` | [Proportions guide](proportion-intervals.md); Wilson precision is not a power calculation or sequential interval. |
 | Select nondominated alternatives | `extract_front`, `pareto_rank`, `hypervolume`, `igd_plus` | `pareto`; positive objective scaling preserves front membership. |
 | Report decisions across preferences | `preference_sweep`, `PreferencePolicy` | Regret, practical equivalence and optional paired uncertainty; preferences are specified by the caller. |

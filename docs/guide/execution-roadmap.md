@@ -22,8 +22,9 @@ failures and stable task identities regardless of a simulator's backend.
 
 ## Fisher feasibility screening
 
-A future Fisher screen can supply a scalar result to existing constraint and
-replication machinery. Consume an explicit information artifact or caller-owned
+The [bounded Fisher adapter](fisher.md) supplies a scalar result to existing
+constraint machinery and preserves unavailable outcomes. It consumes an explicit
+information artifact or caller-owned
 screen instead of adding a compiler/inference dependency to the core. The
 artifact records parameter coordinates/scales, observation noise, design,
 nuisance treatment, reference parameter regime and numerical tolerances.
@@ -34,6 +35,12 @@ nominal Fisher matrix is not grounds for rejecting every otherwise useful design
 Local numerical rank is a screen, not a structural-identifiability proof. Estimated
 screen uncertainty needs an actual sampling/replication contract before a
 probabilistic feasibility claim.
+
+The implemented fixed-replicate allocation and finite-horizon bounded-score
+methods remain available. Recoverable failed-attempt artifacts and gate-specific
+power/false-failure qualification retain their separate scope. The Fisher guide
+also distinguishes SBC, effect recovery, predictive checks and simulation-support
+evidence; each needs its own declared reference and denominator.
 
 ## Predictive stacking and dimension penalties
 

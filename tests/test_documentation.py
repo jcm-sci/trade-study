@@ -14,6 +14,22 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_complete_fisher_guide_preserves_analytic_designs_and_denominators():
+    """The published screen uses a known Hessian and keeps unavailable tasks."""
+    blocks = re.findall(
+        r"```python\n(.*?)\n```", (ROOT / "docs/guide/fisher.md").read_text(), re.DOTALL
+    )
+    namespace: dict[str, Any] = {}
+    for block in blocks:
+        exec(block, namespace)  # ruff: ignore[exec-builtin] -- repository guide
+    np.testing.assert_array_equal(namespace["table"].scores, [[2.0], [8.0]])
+    assert namespace["counts"]["planned"] == 5
+    assert (
+        sum(namespace["counts"][key] for key in ("failed", "unreadable", "missing"))
+        == 3
+    )
+
+
 def test_readme_and_standalone_replicates_agree():
     """Both published entry points preserve pairing and the analytic cost."""
     blocks = re.findall(
