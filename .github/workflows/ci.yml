@@ -124,6 +124,27 @@ jobs:
           just build-all
           uv run --no-sync python -c 'from pathlib import Path; import trade_study; assert Path(trade_study.__file__).resolve().is_relative_to(Path("src").resolve())'
 
+  sensitivity-older:
+    name: Table sensitivity (older numerical stack)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: '3.11'
+      - name: Install explicit compatible optional dependencies
+        run: |
+          uv venv
+          uv pip install -e '.[surrogate,design]' 'numpy==1.24.0' 'scikit-learn==1.3.2' 'SALib==1.5.0' 'scipy==1.11.4' 'pandas==2.0.3' pytest
+      - name: Require conditioning and held-out validation without skips
+        env:
+          OPENBLAS_NUM_THREADS: '1'
+          OMP_NUM_THREADS: '1'
+        run: |
+          uv run --no-sync python -c 'import numpy, sklearn, SALib; print(numpy.__version__, sklearn.__version__)'
+          uv run --no-sync python -m pytest tests/test_sensitivity.py tests/test_sensitivity_scope.py tests/test_grouped_surrogate.py tests/test_external_surrogate_groups.py --junitxml=sensitivity-compatibility.xml
+          uv run --no-sync python -c 'import xml.etree.ElementTree as ET; cases=ET.parse("sensitivity-compatibility.xml").findall(".//testcase"); assert cases and all(c.find("skipped") is None for c in cases)'
+
   fisher-numpy-minimum:
     name: Fisher screen (NumPy 1.24 CPU)
     runs-on: ubuntu-latest
@@ -165,7 +186,7 @@ jobs:
   ci:
     name: ci
     if: always()
-    needs: [lint, test, examples, wheel, fisher-numpy-minimum, fisher-op-stack]
+    needs: [lint, test, examples, wheel, fisher-numpy-minimum, fisher-op-stack, sensitivity-older]
     runs-on: ubuntu-latest
     steps:
       - name: Require every validation job to succeed
@@ -176,6 +197,7 @@ jobs:
           WHEEL_RESULT: ${{ needs.wheel.result }}
           FISHER_RESULT: ${{ needs.fisher-op-stack.result }}
           FISHER_MINIMUM_RESULT: ${{ needs.fisher-numpy-minimum.result }}
+          SENSITIVITY_OLDER_RESULT: ${{ needs.sensitivity-older.result }}
         run: |
           test "$LINT_RESULT" = success
           test "$TEST_RESULT" = success
@@ -183,3 +205,4 @@ jobs:
           test "$WHEEL_RESULT" = success
           test "$FISHER_RESULT" = success
           test "$FISHER_MINIMUM_RESULT" = success
+          test "$SENSITIVITY_OLDER_RESULT" = success

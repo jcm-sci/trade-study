@@ -74,6 +74,7 @@ nav:
       - Result Bundles: guide/result-bundles.md
       - Fixed-sample Proportions: guide/proportion-intervals.md
       - Local Information Screens: guide/fisher.md
+      - Conditional Table Sensitivity: guide/table-sensitivity.md
       - Frozen Slurm Launch Plans: guide/slurm.md
   - API Reference:
       - Protocols: api/protocols.md

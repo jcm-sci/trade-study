@@ -18,11 +18,20 @@ in one validation fold, preventing replicates of a design from appearing in
 both training and validation. Pass a sequence such as `cv_group_by=["noise"]`
 to hold out whole regimes. `cv_r2` and `cv_rmse` then describe held-out groups;
 `row_cv_r2` and `row_cv_rmse` retain shuffled row validation for comparison.
-The default `cv_group_by=None` retains the existing row validation behavior.
+With both group options unset, the existing row validation behavior is retained.
 Grouping is explicit: different design-point ids with identical factor values
 belong to the same design group. Fewer than two groups produce `nan` metrics;
 constant targets have undefined R². Non-finite scores are excluded separately
 for each observable. `validation_groups` exposes row-aligned group ids.
+
+Use `cv_groups=[meta["dataset_id"] for meta in results.metadata]` for an explicit
+shared-dataset/replicate partition across configurations. It is mutually exclusive
+with `cv_group_by` and must align with all original rows. Finite scalar/tuple
+labels are validated without splitting equal numeric identities; missing labels
+are refused. `cv_group_source` and `cv_group_labels` preserve the source and
+external labels. One partition does not automatically block crossed dependencies.
+See the [complete conditional workflow](../guide/table-sensitivity.md) for the
+distinction between held-out designs, regimes and datasets.
 
 `model.support(configs)` reports continuous factors outside the observed
 training range and categorical/discrete levels absent from finite training rows

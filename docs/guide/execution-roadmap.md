@@ -76,6 +76,14 @@ decision value. See the [EVSI formulation](https://doi.org/10.1137/19M1284981).
 
 ## Sequence
 
+High-priority follow-up: make table sensitivity explicit about discrete factors
+and grouped surrogate validation. Active consumers need a refusal of pooled
+omitted inputs, observed-stratum conditioning, retained validation/scope and a
+direct factorial/paired-contrast route. Configuration-factor grouping and explicit
+dataset/replicate partitions answer distinct validation questions. Complete this bounded work
+before remaining optional solver integrations; see
+[conditional table sensitivity](table-sensitivity.md).
+
 First reconcile overlapping issues and establish numerical-package baselines.
 Then integrate forward/provenance and shared statistical interfaces. Add Fisher
 screen adapters after sensitivity contracts are qualified. Keep penalized

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import warnings
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -30,7 +31,7 @@ from ._checkpoint import _value
 from .design import Factor, FactorType, value_to_unit
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Hashable
 
     from numpy.typing import NDArray
 
@@ -159,7 +160,10 @@ class SurrogateModel:
             to ``cv_r2`` in the observable's original units.
         row_cv_r2: Shuffled row-validation R², even when grouping is selected.
         row_cv_rmse: Shuffled row-validation RMSE in observable units.
-        cv_group_by: Grouping factor names, or None for shuffled row validation.
+        cv_group_by: Configuration grouping names, or None for rows/external groups.
+        cv_group_source: "rows", "configuration" or explicit "external" labels.
+        cv_group_labels: Validated external labels aligned with results rows,
+            or None. Equal finite numeric labels share one group.
         validation_groups: Group ids aligned with the original results rows.
         support_ranges: Observed continuous bounds per fitted observable.
         support_levels: Observed levels per fitted observable.
@@ -179,6 +183,8 @@ class SurrogateModel:
         default_factory=dict
     )
     support_levels: dict[str, dict[str, list[Any]]] = field(default_factory=dict)
+    cv_group_source: str = "rows"
+    cv_group_labels: tuple[Hashable, ...] | None = None
 
     def support(self, configs: Sequence[dict[str, Any]]) -> list[PredictionSupport]:
         """Inspect observed support without predicting or emitting warnings.
@@ -336,6 +342,7 @@ def fit_surrogate(  # ruff: ignore[too-many-arguments]
     cv_folds: int = 5,
     warn_below_r2: float | None = 0.0,
     cv_group_by: str | Sequence[str] | None = None,
+    cv_groups: Sequence[object] | NDArray[Any] | None = None,
 ) -> SurrogateModel:
     """Fit a per-observable surrogate over a :class:`ResultsTable`.
 
@@ -373,7 +380,12 @@ def fit_surrogate(  # ruff: ignore[too-many-arguments]
             Grouped folds keep all rows of a group together. When selected,
             ``cv_r2``/``cv_rmse`` report grouped validation; ``row_cv_r2`` and
             ``row_cv_rmse`` retain shuffled row validation for comparison.
-            ``None`` preserves the existing row-validation behavior.
+            Both group options unset preserve shuffled row validation.
+        cv_groups: Explicit group labels aligned with all results rows, mutually
+            exclusive with cv_group_by. Useful for shared dataset/replicate IDs
+            supplied from metadata. Labels are finite numbers, strings, bytes or
+            tuples thereof; missing labels and other objects are refused. One
+            partition tests one caller-declared generalization target.
 
     Returns:
         A fitted :class:`SurrogateModel`.
@@ -394,7 +406,14 @@ def fit_surrogate(  # ruff: ignore[too-many-arguments]
 
     encoder = _FactorEncoder.from_factors(factors)
     x_full = encoder.transform(results.configs)
-    group_names, groups = _validation_groups(results.configs, factors, cv_group_by)
+    external = (
+        None
+        if cv_groups is None
+        else _external_group_labels(cv_groups, len(results.configs))
+    )
+    group_names, groups = _validation_groups(
+        results.configs, factors, cv_group_by, external
+    )
 
     surrogate = SurrogateModel(
         method=method,
@@ -402,6 +421,12 @@ def fit_surrogate(  # ruff: ignore[too-many-arguments]
         observable_names=[],
         models=[],
         cv_group_by=group_names,
+        cv_group_source="external"
+        if external is not None
+        else "configuration"
+        if group_names is not None
+        else "rows",
+        cv_group_labels=external,
         validation_groups=[] if groups is None else groups.tolist(),
     )
     low_accuracy: list[str] = []
@@ -463,10 +488,57 @@ def fit_surrogate(  # ruff: ignore[too-many-arguments]
     return surrogate
 
 
+def _external_group_key(value: object) -> Hashable:
+    """Canonicalize supported labels without splitting equal numeric identities.
+
+    Returns:
+        A hashable, finite scalar or composite group identity.
+
+    Raises:
+        ValueError: Labels are missing, nonfinite or unsupported.
+    """
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, tuple):
+        return tuple(_external_group_key(part) for part in value)
+    if isinstance(value, (str, bytes, int)):
+        return value
+    if isinstance(value, float) and np.isfinite(value):
+        return value
+    msg = (
+        "External group labels require finite numbers, strings, bytes or tuples; "
+        "missing labels are invalid"
+    )
+    raise ValueError(msg)
+
+
+def _external_group_labels(
+    labels: Sequence[object] | NDArray[Any], rows: int
+) -> tuple[Hashable, ...]:
+    """Validate an entire original-row label vector before any filtering.
+
+    Returns:
+        Labels preserving Python numeric equality, including composite labels.
+
+    Raises:
+        ValueError: Vector length/type or any label is invalid.
+    """
+    if (
+        not isinstance(labels, (Sequence, np.ndarray))
+        or isinstance(labels, (str, bytes))
+        or getattr(labels, "ndim", 1) != 1
+        or len(labels) != rows
+    ):
+        msg = "cv_groups requires an ordered vector with one label per original row"
+        raise ValueError(msg)
+    return tuple(_external_group_key(value) for value in labels)
+
+
 def _validation_groups(
     configs: list[dict[str, Any]],
     factors: list[Factor],
     group_by: str | Sequence[str] | None,
+    external: tuple[Hashable, ...] | None = None,
 ) -> tuple[tuple[str, ...] | None, NDArray[np.int64] | None]:
     """Create stable group ids from selected factor values.
 
@@ -474,8 +546,17 @@ def _validation_groups(
         Grouping factor names and an aligned integer group vector, or None.
 
     Raises:
-        ValueError: If grouping names are empty, duplicated, or unknown.
+        ValueError: Grouping names are invalid or two group sources are supplied.
     """
+    if external is not None:
+        if group_by is not None:
+            msg = "cv_groups and cv_group_by are mutually exclusive"
+            raise ValueError(msg)
+        external_ids: dict[Hashable, int] = {}
+        return None, np.asarray(
+            [external_ids.setdefault(label, len(external_ids)) for label in external],
+            dtype=np.int64,
+        )
     if group_by is None:
         return None, None
     names = tuple(f.name for f in factors) if group_by == "design" else tuple(group_by)

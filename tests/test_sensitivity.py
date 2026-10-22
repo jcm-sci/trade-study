@@ -111,13 +111,18 @@ def test_surrogate_cv_r2_reflects_fit_quality(continuous_factors: list[Factor]) 
     assert result.surrogate_cv_r2["y"] > 0.5
 
 
-def test_drops_noncontinuous_factors(continuous_factors: list[Factor]) -> None:
-    """A categorical factor in the input list is dropped, not an error."""
+def test_reports_observed_fixed_noncontinuous_factor(
+    continuous_factors: list[Factor],
+) -> None:
+    """An actually observed constant is held fixed and reported explicitly."""
     mixed = [*continuous_factors, Factor("kind", FactorType.CATEGORICAL, levels=["x"])]
     results = _make_results(continuous_factors)
+    for config in results.configs:
+        config["kind"] = "x"
     result = sensitivity_from_table(results, mixed, seed=0)
     # Only the two continuous factors are screened.
     assert result.importance["y"].shape == (2,)
+    assert result.fixed_factors == {"kind": "x"}
 
 
 def test_propagates_screen_no_continuous_error(
