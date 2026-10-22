@@ -142,7 +142,7 @@ jobs:
           OMP_NUM_THREADS: '1'
         run: |
           uv run --no-sync python -c 'import numpy, sklearn, SALib; print(numpy.__version__, sklearn.__version__)'
-          uv run --no-sync python -m pytest tests/test_sensitivity.py tests/test_sensitivity_scope.py tests/test_grouped_surrogate.py tests/test_external_surrogate_groups.py --junitxml=sensitivity-compatibility.xml
+          uv run --no-sync python -m pytest tests/test_sensitivity.py tests/test_sensitivity_scope.py tests/test_grouped_surrogate.py tests/test_external_surrogate_groups.py tests/test_sobol_workload.py --junitxml=sensitivity-compatibility.xml
           uv run --no-sync python -c 'import xml.etree.ElementTree as ET; cases=ET.parse("sensitivity-compatibility.xml").findall(".//testcase"); assert cases and all(c.find("skipped") is None for c in cases)'
 
   fisher-numpy-minimum:

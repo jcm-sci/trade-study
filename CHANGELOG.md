@@ -21,6 +21,11 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- Correct Sobol-screen budgets to the actual second-order design:
+  `N * (2*D + 2)` nominal configurations and that count times `n_reps`
+  callback invocations. Qualify both entry points with deterministic counts;
+  preserve sampler/analyzer settings and scientific defaults.
+
 - Separate computational SBC, effect recovery, predictive adequacy and simulation
   support. Document PPC reference-law, conditional-denominator and sampling limits.
 

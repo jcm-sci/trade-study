@@ -574,7 +574,9 @@ def screen(
         method: Screening method (``"morris"`` or ``"sobol"``).
         n_trajectories: Number of Morris trajectories.  For Sobol, this
             controls the base sample size *N*; the total number of model
-            evaluations is *N* x (num_vars + 2).
+            configurations is *N* x (2 x num_vars + 2), using the current
+            second-order Saltelli design even though ``screen`` returns S1
+            only. Physical ``run_fn`` calls multiply this by ``n_reps``.
         n_reps: Replicate draws averaged into each sampled point's scores
             before SALib sees them, the same convention
             ``run_grid(..., n_reps>1)`` uses -- ``run_fn`` opts in
@@ -732,8 +734,9 @@ def sobol_indices(
             observable name -> scalar score.
         factors: Factor list to analyze; only continuous factors are
             varied (as in ``screen()``).
-        n_samples: Base sample size *N* for the Saltelli design; total
-            evaluations are *N* x (2 x num_vars + 2).
+        n_samples: Base sample size *N* for the second-order Saltelli design;
+            total configurations are *N* x (2 x num_vars + 2). Physical
+            ``run_fn`` calls multiply this by ``n_reps``.
         n_reps: Replicate draws averaged into each sampled point's scores
             before SALib sees them -- see ``screen()``'s ``n_reps``
             for the full rationale and the ``run_fn`` opt-in convention.
