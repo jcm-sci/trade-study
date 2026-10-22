@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Make table sensitivity refuse varying discrete/categorical or undeclared
+  inputs, with explicit observed-stratum conditioning and bookkeeping exclusions.
+  Bind observed constants, retain input/sampling scope and original row identities,
+  forward configuration-factor grouped validation, and preserve grouped/row R²,
+  RMSE and observed support. Add explicit dataset/replicate labels to surrogate
+  validation, checked before conditioning with stable numeric group identity.
+  Document direct discrete contrasts and the single-partition validation limit.
+
 - Bounded local Fisher-screen adapter for caller-qualified host information
   matrices, explicit coordinates/target directions, existing feasibility
   constraints, distinct unavailable/failed outcomes and planned-ID counts.

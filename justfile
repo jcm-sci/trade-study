@@ -59,6 +59,7 @@ build-test:
 	cp README.md "$CLEANROOM/README.md"
 	mkdir -p "$CLEANROOM/docs/guide"
 	cp docs/guide/fisher.md "$CLEANROOM/docs/guide/"
+	cp docs/guide/table-sensitivity.md "$CLEANROOM/docs/guide/"
 	cd "$CLEANROOM"
 	unset PYTHONPATH
 	"$CLEANROOM/venv/bin/python" -c 'import trade_study; assert "site-packages" in trade_study.__file__'
