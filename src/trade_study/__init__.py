@@ -25,6 +25,13 @@ from .design import (
     unit_to_value,
     value_to_unit,
 )
+from .fisher import (
+    FisherContext,
+    FisherScreenPolicy,
+    FisherScreenResult,
+    fisher_screen_counts,
+    screen_fisher,
+)
 from .io import load_results, save_results
 from .paired import PairedDifference, paired_difference, paired_rank
 from .proportions import (
@@ -82,6 +89,9 @@ __all__ = [
     "Factor",
     "FactorConstraint",
     "FactorType",
+    "FisherContext",
+    "FisherScreenPolicy",
+    "FisherScreenResult",
     "FrozenCheckout",
     "Observable",
     "PairedDifference",
@@ -113,6 +123,7 @@ __all__ = [
     "ensemble_predict",
     "extract_front",
     "feasibility_filter",
+    "fisher_screen_counts",
     "fit_regime_surrogate",
     "fit_surrogate",
     "freeze_checkout",
@@ -144,6 +155,7 @@ __all__ = [
     "save_results",
     "score",
     "screen",
+    "screen_fisher",
     "sensitivity_from_table",
     "sobol_indices",
     "stack_bayesian",

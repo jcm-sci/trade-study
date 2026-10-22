@@ -27,14 +27,14 @@ jobs:
           examples/serosurvey_study.py examples/serosurvey_study.ipynb
           examples/serosurvey_contexts.py examples/serosurvey_frames.py
           examples/replicated_study.py
-          examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py
+          examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py examples/fisher_op_stack.py
       - name: Lint
         run: >-
           uv run ruff check --preview src tests
           examples/serosurvey_study.py examples/serosurvey_study.ipynb
           examples/serosurvey_contexts.py examples/serosurvey_frames.py
           examples/replicated_study.py
-          examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py
+          examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py examples/fisher_op_stack.py
       - name: Type check (strict)
         run: uv run mypy --strict src
       - name: Build documentation (strict)
@@ -124,10 +124,48 @@ jobs:
           just build-all
           uv run --no-sync python -c 'from pathlib import Path; import trade_study; assert Path(trade_study.__file__).resolve().is_relative_to(Path("src").resolve())'
 
+  fisher-numpy-minimum:
+    name: Fisher screen (NumPy 1.24 CPU)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: '3.11'
+      - name: Install core at its minimum NumPy version
+        run: |
+          uv venv
+          uv pip install -e . 'numpy==1.24.0' pytest
+      - name: Qualify the bounded core and complete guide
+        run: >-
+          uv run --no-sync python -m pytest tests/test_fisher.py
+          tests/test_documentation.py::test_complete_fisher_guide_preserves_analytic_designs_and_denominators
+
+  fisher-op-stack:
+    name: Fisher information artifact (NumPy CPU)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: '3.12'
+      - name: Install reviewed public producers and this consumer
+        run: |
+          uv venv
+          uv pip install -e . \
+            'op-system @ git+https://github.com/ACCIDDA/op_system@bbde00697428f16f6cf948e7aff207f7b65231c8' \
+            'op-engine @ git+https://github.com/ACCIDDA/op_engine@5f7dd592e97a849bca5ccad348ea66e935187f18' \
+            'op-infer @ git+https://github.com/ACCIDDA/op_infer@713a2b76119e174dab75290eaf5bff9ffce63af6'
+      - name: Qualify actual measured information and declared directions
+        env:
+          OPENBLAS_NUM_THREADS: '1'
+          OMP_NUM_THREADS: '1'
+        run: uv run --no-sync python examples/fisher_op_stack.py
+
   ci:
     name: ci
     if: always()
-    needs: [lint, test, examples, wheel]
+    needs: [lint, test, examples, wheel, fisher-numpy-minimum, fisher-op-stack]
     runs-on: ubuntu-latest
     steps:
       - name: Require every validation job to succeed
@@ -136,8 +174,12 @@ jobs:
           TEST_RESULT: ${{ needs.test.result }}
           EXAMPLES_RESULT: ${{ needs.examples.result }}
           WHEEL_RESULT: ${{ needs.wheel.result }}
+          FISHER_RESULT: ${{ needs.fisher-op-stack.result }}
+          FISHER_MINIMUM_RESULT: ${{ needs.fisher-numpy-minimum.result }}
         run: |
           test "$LINT_RESULT" = success
           test "$TEST_RESULT" = success
           test "$EXAMPLES_RESULT" = success
           test "$WHEEL_RESULT" = success
+          test "$FISHER_RESULT" = success
+          test "$FISHER_MINIMUM_RESULT" = success

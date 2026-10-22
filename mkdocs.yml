@@ -73,6 +73,7 @@ nav:
       - Choosing Ensemble Weights: guide/stacking.md
       - Result Bundles: guide/result-bundles.md
       - Fixed-sample Proportions: guide/proportion-intervals.md
+      - Local Information Screens: guide/fisher.md
       - Frozen Slurm Launch Plans: guide/slurm.md
   - API Reference:
       - Protocols: api/protocols.md
@@ -82,6 +83,7 @@ nav:
       - Adaptive Sessions: api/session.md
       - Paired Comparisons: api/paired.md
       - Proportion Intervals: api/proportions.md
+      - Local Information Screens: api/fisher.md
       - Decision Summaries: api/decision.md
       - Post-hoc Sensitivity: api/sensitivity.md
       - Study: api/study.md

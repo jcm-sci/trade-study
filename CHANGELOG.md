@@ -4,7 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Bounded local Fisher-screen adapter for caller-qualified host information
+  matrices, explicit coordinates/target directions, existing feasibility
+  constraints, distinct unavailable/failed outcomes and planned-ID counts.
+  Export primitive JSON context/policy/evidence without new dependencies.
+
 ### Documentation
+
+- Separate computational SBC, effect recovery, predictive adequacy and simulation
+  support. Document PPC reference-law, conditional-denominator and sampling limits.
 
 - Record execution ownership, host-result boundaries, Fisher-screen integration
   requirements and separate qualification targets for penalized stacking and EVSI.
