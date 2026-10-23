@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Opt-in sequential abort capture retains raw completed rows, failed attempt
+  identity and stage, declared policy/designs, separate attempted/completed/failed
+  counts and diagnostic bundle metadata. Default errors and stopping methods are
+  unchanged; aborted artifacts supply no inferential result or automatic retry.
+
 - Make table sensitivity refuse varying discrete/categorical or undeclared
   inputs, with explicit observed-stratum conditioning and bookkeeping exclusions.
   Bind observed constants, retain input/sampling scope and original row identities,
