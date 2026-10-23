@@ -146,12 +146,13 @@ mode supplies a paired-contrast interval; ordinary paired post-selection
 inference does not acquire sequential coverage from this metadata.
 
 Missing, non-finite or out-of-bound scores abort instead of producing a pass with
-a reduced denominator. Simulator/scorer exceptions also propagate. This runner
-does not persist recoverable failed-attempt artifacts or calculate
-gate-specific power/false-failure thresholds; an aborted run is unavailable,
-and unresolved precision is not relabeled as an assessed power result. Those
-remaining obligations and optional statistical qualification are not implemented
-by this runner.
+a reduced denominator. Simulator/scorer exceptions also propagate by default.
+Opt-in abort capture, described below, preserves diagnostic rows and failed
+attempt identities for the existing bundle writer. It supplies no automatic
+persistence/resume or gate-specific power/false-failure thresholds. An aborted
+run remains unavailable, and unresolved precision is not relabeled as assessed
+power. Statistical qualification and gate operating characteristics remain
+separate obligations.
 
 [Howard et al. (2021)](https://arxiv.org/abs/1810.08240) and the authors'
 [confseq implementations](https://github.com/gostevehoward/confseq) describe
@@ -160,9 +161,60 @@ inference. They need separate domain/tuning/numerical qualification; the current
 known finite horizon and generic bounded scores do not require replacing this
 NumPy-only baseline or introducing a compiled dependency.
 
+### Aborted-run artifacts
+
+By default, evaluator and declared-score errors retain their existing exception
+behavior. With `capture_failure=True`, an ordinary evaluation or score-validation
+exception raises `SequentialEvaluationError`, with the original error in
+`__cause__` and a detached `SequentialFailure` in `.failure`. The runner snapshots
+the declared definitions before evaluation; completed raw rows are copied only
+when capturing a failure. Successful runs keep the same scores and allocation.
+
+The failure record separates completed, attempted and failed replicate counts,
+retains the failed design/replicate identity, stage and error, and distinguishes
+fixed planned counts from adaptive capacity. Raw rows include their original
+`evaluation_index`, even though table rows are grouped by design. All captured
+rows are marked `run_status="aborted"` and `decision_status="unavailable"`.
+The record supplies no intervals, feasibility pass or completed sequential result.
+
+Given the caller's simulator, scorer, grid, objectives and policy:
+
+```python
+from trade_study import SequentialEvaluationError, run_sequential, save_result_bundle
+
+try:
+    result = run_sequential(
+        world, scorer, grid, observables,
+        policy=policy, capture_failure=True,
+    )
+except SequentialEvaluationError as error:
+    abort = error.failure
+    save_result_bundle(
+        abort.results, "new-aborted-run-directory",
+        observables=abort.observables,
+        provenance={
+            "model_revision": "caller-supplied-revision",
+            "random_stream": "caller-supplied-stream-identity",
+            "sequential_failure": abort.to_metadata(),
+        },
+    )
+```
+
+The existing bundle writer preserves diagnostic metadata even when the first
+attempt fails and there are zero completed rows. Configuration/provenance values
+must satisfy its primitive-JSON contract; it refuses existing destinations.
+These artifacts support inspection and preservation of work. They supply no
+automatic retries/resume, process-kill recovery or inference conditional on
+successful attempts. Do not treat the completed subset as a complete fixed plan
+or an available sequential decision.
+
 ::: trade_study.ReplicationPolicy
 
 ::: trade_study.SequentialResult
+
+::: trade_study.SequentialFailure
+
+::: trade_study.SequentialEvaluationError
 
 ::: trade_study.run_sequential
 

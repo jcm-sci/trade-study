@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from numbers import Integral
 from typing import TYPE_CHECKING, Any
@@ -62,12 +63,139 @@ class SequentialResult:
     policy: ReplicationPolicy
 
 
+@dataclass(frozen=True)
+class SequentialFailure:
+    """Detached diagnostics from an aborted run, without inferential results.
+
+    Attributes:
+        results: Completed raw rows, each marked as belonging to an aborted run.
+        grid: Declared designs captured before evaluation.
+        observables: Declared objectives captured before evaluation.
+        constraints: Declared constraints captured before evaluation.
+        policy: Detached policy used by the failed run.
+        completed_reps: Completed counts in declared design order.
+        failed_design: Zero-based design index of the failed attempt.
+        failed_rep: Zero-based replicate index of the failed attempt.
+        stage: Evaluation or declared-score validation stage.
+        exception_type: Qualified type of the original evaluation error.
+        exception_message: Original error message.
+    """
+
+    results: ResultsTable
+    grid: list[dict[str, Any]]
+    observables: list[Observable]
+    constraints: list[Constraint]
+    policy: ReplicationPolicy
+    completed_reps: tuple[int, ...]
+    failed_design: int
+    failed_rep: int
+    stage: Literal["evaluation", "score_validation"]
+    exception_type: str
+    exception_message: str
+
+    def to_metadata(self) -> dict[str, Any]:
+        """Describe the abort for caller provenance in a result bundle.
+
+        Returns:
+            Versioned diagnostic metadata. Designs must also satisfy the bundle
+            writer's primitive-JSON contract when persisted. Counts distinguish
+            failed attempts from completed rows and unattempted capacity.
+        """
+        failed = [int(index == self.failed_design) for index in range(len(self.grid))]
+        attempted = [
+            count + failures
+            for count, failures in zip(self.completed_reps, failed, strict=True)
+        ]
+        return {
+            "schema_version": 1,
+            "kind": "sequential_failure",
+            "status": "aborted",
+            "evaluability": "unavailable",
+            "decision_status": "unavailable",
+            "inference": "not_supplied",
+            "failure_policy": "abort",
+            "designs": deepcopy(self.grid),
+            "completed_reps": list(self.completed_reps),
+            "attempted_reps": attempted,
+            "failed_reps": failed,
+            "actual_evaluations": sum(attempted),
+            "completed_evaluations": sum(self.completed_reps),
+            "failed_design": self.failed_design,
+            "failed_rep": self.failed_rep,
+            "failed_evaluation_index": sum(self.completed_reps),
+            "stage": self.stage,
+            "error_type": self.exception_type,
+            "error_message": self.exception_message,
+            "allocation_policy": self.policy.allocation,
+            "replicate_unit": self.policy.replicate_unit,
+            "planned_min_reps": self.policy.min_reps,
+            "planned_reps": self.policy.max_reps
+            if self.policy.allocation == "fixed"
+            else None,
+            "max_reps": self.policy.max_reps,
+            "max_evaluations": self.policy.max_evaluations,
+            "unattempted_capacity": [self.policy.max_reps - n for n in attempted],
+            "requested_confidence": self.policy.confidence,
+            "score_bounds": {
+                name: [lower, upper]
+                for name, (lower, upper) in self.policy.score_bounds.items()
+            },
+            "equivalence": dict(self.policy.equivalence),
+            "observables": [
+                {
+                    "name": item.name,
+                    "direction": item.direction.value,
+                    "weight": float(item.weight),
+                }
+                for item in self.observables
+            ],
+            "constraints": [
+                {
+                    "name": item.name,
+                    "observable": item.observable,
+                    "op": item.op,
+                    "threshold": float(item.threshold),
+                    "requested_confidence": None
+                    if item.confidence is None
+                    else float(item.confidence),
+                }
+                for item in self.constraints
+            ],
+        }
+
+
+class SequentialEvaluationError(RuntimeError):
+    """An opt-in aborted-run error carrying diagnostics and its original cause.
+
+    Attributes:
+        failure: Detached raw rows and failure metadata, without intervals,
+            summary feasibility or a completed sequential result.
+    """
+
+    def __init__(self, failure: SequentialFailure) -> None:
+        """Store diagnostics for an explicitly requested failure capture."""
+        self.failure = failure
+        super().__init__(
+            f"Sequential evaluation aborted at design {failure.failed_design}, "
+            f"replicate {failure.failed_rep}: {failure.exception_type}: "
+            f"{failure.exception_message}"
+        )
+
+
+@dataclass(frozen=True)
+class _FailureCapture:
+    grid: list[dict[str, Any]]
+    observables: list[Observable]
+    constraints: list[Constraint]
+
+
 @dataclass
 class _Allocation:
     trials: list[list[TrialResult]]
     reasons: list[str]
     feasibility: list[str]
     evaluations: int = 0
+    failure_capture: _FailureCapture | None = None
 
     @property
     def counts(self) -> NDArray[np.int64]:
@@ -199,16 +327,28 @@ def _evaluate(
     policy: ReplicationPolicy,
 ) -> None:
     rep = len(allocation.trials[design_point])
-    trial = _run_single(
-        world, scorer, config, rep=rep, supports_rep=_generate_accepts_rep(world)
-    )
-    for name, (lower, upper) in policy.score_bounds.items():
-        value = trial.scores.get(name, float("nan"))
-        if not np.isfinite(value) or not lower <= value <= upper:
-            msg = (
-                f"Score {name!r}={value} violates its declared bounds {(lower, upper)}"
+    stage: Literal["evaluation", "score_validation"] = "evaluation"
+    try:
+        trial = _run_single(
+            world, scorer, config, rep=rep, supports_rep=_generate_accepts_rep(world)
+        )
+        stage = "score_validation"
+        _validate_trial_scores(trial, policy)
+    # Evaluators may raise any ordinary Exception; default behavior re-raises it.
+    except Exception as error:
+        if allocation.failure_capture is None:
+            raise
+        raise SequentialEvaluationError(
+            _failure(
+                allocation.failure_capture,
+                allocation,
+                policy,
+                design_point,
+                rep,
+                stage,
+                error,
             )
-            raise ValueError(msg)
+        ) from error
     trial.metadata.update({
         "design_point": design_point,
         "allocation": "fixed"
@@ -217,8 +357,25 @@ def _evaluate(
         if rep < policy.min_reps
         else "ambiguous",
     })
+    if allocation.failure_capture is not None:
+        trial.metadata["evaluation_index"] = allocation.evaluations
     allocation.trials[design_point].append(trial)
     allocation.evaluations += 1
+
+
+def _validate_trial_scores(trial: TrialResult, policy: ReplicationPolicy) -> None:
+    """Check every declared score before accepting a completed replicate.
+
+    Raises:
+        ValueError: A declared score is missing, nonfinite or out of bounds.
+    """
+    for name, (lower, upper) in policy.score_bounds.items():
+        value = trial.scores.get(name, float("nan"))
+        if not np.isfinite(value) or not lower <= value <= upper:
+            msg = (
+                f"Score {name!r}={value} violates its declared bounds {(lower, upper)}"
+            )
+            raise ValueError(msg)
 
 
 def _intervals(
@@ -343,15 +500,7 @@ def _result(
     constraints: list[Constraint],
 ) -> SequentialResult:
     names = [o.name for o in observables]
-    rows = [t for trials in allocation.trials for t in trials]
-    raw = ResultsTable(
-        configs=[t.config for t in rows],
-        scores=np.array(
-            [[t.scores[name] for name in names] for t in rows], dtype=float
-        ),
-        observable_names=names,
-        metadata=[{"wall_seconds": t.wall_seconds, **t.metadata} for t in rows],
-    )
+    raw = _raw_results(allocation, observables)
     summary = raw.aggregate_replicates()
     method = _interval_method(policy)
     for index, meta in enumerate(summary.metadata):
@@ -364,7 +513,12 @@ def _result(
             "confidence": policy.confidence,
             "interval_method": method,
             "replication_contract": _contract_metadata(
-                allocation, intervals[index], observables, policy, index, constraints
+                allocation,
+                intervals[index],
+                observables,
+                policy,
+                index,
+                constraints,
             ),
         })
     return SequentialResult(
@@ -375,6 +529,60 @@ def _result(
         allocation.reasons,
         allocation.feasibility,
         policy,
+    )
+
+
+def _raw_results(
+    allocation: _Allocation, observables: list[Observable]
+) -> ResultsTable:
+    """Collect raw completed rows.
+
+    Returns:
+        A score table with explicit row/observable axes, including zero rows.
+    """
+    names = [item.name for item in observables]
+    rows = [trial for trials in allocation.trials for trial in trials]
+    return ResultsTable(
+        configs=[trial.config for trial in rows],
+        scores=np.array(
+            [[trial.scores[name] for name in names] for trial in rows], dtype=float
+        ).reshape(len(rows), len(names)),
+        observable_names=names,
+        metadata=[
+            {"wall_seconds": trial.wall_seconds, **trial.metadata} for trial in rows
+        ],
+    )
+
+
+def _failure(
+    capture: _FailureCapture,
+    allocation: _Allocation,
+    policy: ReplicationPolicy,
+    design_point: int,
+    rep: int,
+    stage: Literal["evaluation", "score_validation"],
+    error: Exception,
+) -> SequentialFailure:
+    """Detach completed rows and the declared plan without computing inference.
+
+    Returns:
+        An aborted-run artifact with the failed attempt retained separately.
+    """
+    raw = deepcopy(_raw_results(allocation, capture.observables))
+    for metadata in raw.metadata:
+        metadata.update(run_status="aborted", decision_status="unavailable")
+    return SequentialFailure(
+        results=raw,
+        grid=deepcopy(capture.grid),
+        observables=deepcopy(capture.observables),
+        constraints=deepcopy(capture.constraints),
+        policy=_snapshot_policy(policy),
+        completed_reps=tuple(int(count) for count in allocation.counts),
+        failed_design=design_point,
+        failed_rep=rep,
+        stage=stage,
+        exception_type=f"{type(error).__module__}.{type(error).__qualname__}",
+        exception_message=str(error),
     )
 
 
@@ -466,6 +674,7 @@ def _run_fixed(
     observables: list[Observable],
     policy: ReplicationPolicy,
     constraints: list[Constraint],
+    failure_capture: _FailureCapture | None = None,
 ) -> SequentialResult:
     """Execute the entire prespecified plan before its only inference look.
 
@@ -473,7 +682,10 @@ def _run_fixed(
         A completed fixed-count baseline; no early winner/retirement is inferred.
     """
     allocation = _Allocation(
-        [[] for _ in grid], ["fixed_plan_complete"] * len(grid), ["unknown"] * len(grid)
+        [[] for _ in grid],
+        ["fixed_plan_complete"] * len(grid),
+        ["unknown"] * len(grid),
+        failure_capture=failure_capture,
     )
     for _rep in range(policy.max_reps):
         for index, config in enumerate(grid):
@@ -493,6 +705,7 @@ def run_sequential(
     *,
     policy: ReplicationPolicy,
     constraints: list[Constraint] | None = None,
+    capture_failure: bool = False,
 ) -> SequentialResult:
     """Allocate extra replicates to unresolved comparisons and constraints.
 
@@ -505,6 +718,9 @@ def run_sequential(
             The validated used policy is snapshotted before simulator calls.
         constraints: Monotone feasibility constraints on scored observables.
             Simultaneous policy intervals replace normal standard-error bounds.
+        capture_failure: On ordinary evaluation/score-validation exceptions, raise
+            SequentialEvaluationError with detached raw diagnostics and the
+            original exception as its cause. No successful result is returned.
 
     Returns:
         Raw per-replicate results, per-design means, simultaneous mean intervals,
@@ -513,6 +729,9 @@ def run_sequential(
 
     Raises:
         ValueError: If definitions/budgets are invalid or a score violates bounds.
+        TypeError: If capture_failure is not boolean.
+        SequentialEvaluationError: If explicitly requested failure capture aborts
+            an evaluation. Its failure record supplies no inferential result.
 
     Notes:
         Coverage requires independent replicates with a fixed mean within each
@@ -527,7 +746,10 @@ def run_sequential(
         Missing/non-finite/out-of-bound scores abort rather than reduce the
         denominator. Returned metadata records the used policy and actual counts;
         ordinary post-selection paired intervals gain no sequential coverage.
-    """
+    """  # ruff: ignore[docstring-extraneous-exception] -- helper propagates error
+    if not isinstance(capture_failure, bool):
+        msg = "capture_failure must be boolean"
+        raise TypeError(msg)
     grid, observables = list(grid), list(observables)
     if not grid:
         msg = "Sequential replication requires at least one design"
@@ -535,10 +757,20 @@ def run_sequential(
     constraints = list(constraints or [])
     _validate(policy, observables, constraints, len(grid))
     policy = _snapshot_policy(policy)
+    capture = (
+        _FailureCapture(deepcopy(grid), deepcopy(observables), deepcopy(constraints))
+        if capture_failure
+        else None
+    )
     if policy.allocation == "fixed":
-        return _run_fixed(world, scorer, grid, observables, policy, constraints)
+        return _run_fixed(
+            world, scorer, grid, observables, policy, constraints, capture
+        )
     allocation = _Allocation(
-        [[] for _ in grid], [""] * len(grid), ["unknown"] * len(grid)
+        [[] for _ in grid],
+        [""] * len(grid),
+        ["unknown"] * len(grid),
+        failure_capture=capture,
     )
     for _rep in range(policy.min_reps):
         for index, config in enumerate(grid):
