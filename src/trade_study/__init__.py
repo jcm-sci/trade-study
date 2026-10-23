@@ -59,7 +59,13 @@ from .regime import (
 )
 from .runner import run_adaptive, run_grid, run_hyperband, run_successive_halving
 from .sensitivity import TableSensitivity, sensitivity_from_table
-from .sequential import ReplicationPolicy, SequentialResult, run_sequential
+from .sequential import (
+    ReplicationPolicy,
+    SequentialEvaluationError,
+    SequentialFailure,
+    SequentialResult,
+    run_sequential,
+)
 from .session import AdaptiveSession, SessionTrial
 from .slurm import (
     FrozenCheckout,
@@ -106,6 +112,8 @@ __all__ = [
     "ResultsBundle",
     "ResultsTable",
     "Scorer",
+    "SequentialEvaluationError",
+    "SequentialFailure",
     "SequentialResult",
     "SessionTrial",
     "Simulator",
