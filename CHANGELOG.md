@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Held-out lower bound on the mutual information between the generating
+  structure and the data (`model_information`, `ModelInformation`,
+  `TruthScore`): a stratified estimate of `H(M) + E[log q(M | Y)]` from the
+  posterior model probabilities of replicates the reader was not fitted on,
+  with a normal-approximation interval, per-structure scores, failed
+  replicates kept (`failed="prior"` counts them as zero information) and the
+  probability floor reported (#238).
+
 - Exact event-driven trial design (`trade_study.trials`): conditional-binomial
   efficacy intervals, event targets, fixed-duration power, Lan-DeMets
   group-sequential boundaries with non-binding futility and exact operating
