@@ -86,6 +86,7 @@ nav:
       - Paired Comparisons: api/paired.md
       - Proportion Intervals: api/proportions.md
       - Power Curves: api/power.md
+      - Event-Driven Trials: api/trials.md
       - Local Information Screens: api/fisher.md
       - Decision Summaries: api/decision.md
       - Post-hoc Sensitivity: api/sensitivity.md
