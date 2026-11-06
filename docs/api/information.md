@@ -32,11 +32,14 @@ Conditions that the caller establishes:
   `prior` (uniform by default); the number of replicates per structure may
   differ from `prior`, and at least two are needed for every structure with
   positive prior.
-- **Calibration** is not required for validity: a miscalibrated reader gives a
-  lower bound, never a higher one. It is required for the bound to be close to
-  `I(M; Y)`.
+- **Calibration** is not required for validity: for any reader, calibrated or
+  not, the bound does not exceed `I(M; Y)`; miscalibration lowers it. A
+  calibrated reader is what makes the bound close to `I(M; Y)`.
 - **Failures** are never dropped: an all-NaN row raises unless
   `failed="prior"`, which replaces it by the prior (zero information).
+- **Failed strata.** If every replicate of a structure fails and
+  `failed="prior"` is used, that structure contributes no information and a
+  standard error of zero; check `n_failed` beside the interval.
 - **Floor.** A probability for the true structure below `floor` is raised to
   it; `n_floored` counts them and any is a warning, because a probability of
   zero would make the bound `-inf`.

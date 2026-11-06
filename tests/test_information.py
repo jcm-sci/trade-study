@@ -172,3 +172,33 @@ def test_partially_missing_row_is_refused() -> None:
     posterior = [[0.5, 0.5], [0.5, 0.5], [np.nan, 0.5], [0.5, 0.5]]
     with pytest.raises(ValueError, match="complete or entirely missing"):
         model_information(posterior, ["A", "A", "B", "B"], LABELS, failed="prior")
+
+
+def test_a_structure_whose_replicates_all_fail_adds_no_information() -> None:
+    posterior = [[0.9, 0.1], [0.8, 0.2], [np.nan, np.nan], [np.nan, np.nan]]
+    info = model_information(posterior, ["A", "A", "B", "B"], LABELS, failed="prior")
+    scores = {t.label: t for t in info.by_truth}
+    assert info.n_failed == 2
+    assert scores["B"].standard_error == pytest.approx(0.0, abs=1e-12)
+    assert scores["B"].mean_log_probability == pytest.approx(math.log(0.5))
+    assert math.isfinite(info.bound)
+
+
+def test_one_hot_prior_has_no_entropy_to_resolve() -> None:
+    info = model_information([[1.0, 0.0]] * 3, ["A"] * 3, LABELS, prior=[1.0, 0.0])
+    assert info.prior_entropy == pytest.approx(0.0, abs=1e-12)
+    assert info.bound == pytest.approx(0.0, abs=1e-12)
+    assert math.isnan(info.fraction_resolved)
+    assert [t.label for t in info.by_truth] == ["A"]
+
+
+def test_float32_posteriors_are_accepted() -> None:
+    posterior, truth = _gaussian_study(500, 500, 0.8, seed=5)
+    wide = model_information(posterior, truth, LABELS)
+    narrow = model_information(posterior.astype(np.float32), truth, LABELS)
+    assert narrow.bound == pytest.approx(wide.bound, abs=1e-5)
+
+
+def test_one_dimensional_posterior_gets_a_shape_message() -> None:
+    with pytest.raises(ValueError, match=r"shape \(4, 2\), not \(4,\)"):
+        model_information([0.5, 0.5, 0.5, 0.5], ["A", "A", "B", "B"], LABELS)

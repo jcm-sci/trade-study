@@ -260,7 +260,10 @@ def model_information(
     frequencies ``prior`` must be those used to draw them (and, for a trained
     classifier, to train it). A failed replicate is never dropped: with
     ``failed="prior"`` a missing (all-NaN) row is replaced by the prior, which
-    counts the failure as zero information.
+    counts the failure as zero information. If every replicate of a structure
+    fails, its scores all equal ``log pi_m`` and its standard error is zero:
+    it contributes no information and no sampling uncertainty, so inspect
+    ``n_failed`` beside the interval.
 
     Args:
         posterior: Array of shape ``(n, len(labels))`` of probabilities, each
