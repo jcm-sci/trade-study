@@ -159,6 +159,11 @@ def hypervolume(
         for j, w in enumerate(weights):
             obj[:, j] *= w
             rp[j] *= w
+    if obj.ndim == 2 and obj.shape[1] == 1:
+        # moocore's native 1-D path can segfault (#229); the exact value is a length.
+        if obj.shape[0] == 0:
+            return 0.0
+        return max(0.0, float(rp[0] - np.min(obj[:, 0])))
     return float(HV(ref_point=rp)(obj))
 
 
