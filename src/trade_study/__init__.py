@@ -13,6 +13,7 @@ from .artifacts import (
     save_result_bundle,
 )
 from .cache import EvaluationCache
+from .confusion import ConfusionTable, confusion_table
 from .decision import PreferencePolicy, PreferenceSweep, preference_sweep
 from .design import (
     Factor,
@@ -110,6 +111,7 @@ __all__ = [
     "AdaptiveSession",
     "AdequateDesign",
     "Annotation",
+    "ConfusionTable",
     "Constraint",
     "Direction",
     "EfficacyInterval",
@@ -154,6 +156,7 @@ __all__ = [
     "alpha_spending",
     "build_grid",
     "conditional_power",
+    "confusion_table",
     "coverage_curve",
     "design_group_sequential",
     "efficacy_from_share",

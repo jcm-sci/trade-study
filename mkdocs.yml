@@ -87,6 +87,7 @@ nav:
       - Proportion Intervals: api/proportions.md
       - Power Curves: api/power.md
       - Event-Driven Trials: api/trials.md
+      - Confusion Tables: api/confusion.md
       - Local Information Screens: api/fisher.md
       - Decision Summaries: api/decision.md
       - Post-hoc Sensitivity: api/sensitivity.md
