@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import subprocess  # ruff: ignore[suspicious-subprocess-import] - real command tests
+import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -62,7 +62,7 @@ if __name__ == '__main__':
 def _git(root: Path, *args: str) -> str:
     program = shutil.which("git")
     assert program is not None
-    return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+    return subprocess.run(
         [program, "-C", str(root), *args], capture_output=True, text=True, check=True
     ).stdout.strip()
 

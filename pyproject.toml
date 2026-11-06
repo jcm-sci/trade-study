@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trade-study"
-version = "0.6.0"
+version = "0.7.0.dev0"
 description = "Multi-objective trade-study orchestration: scoring, Pareto optimization, and Bayesian stacking"
 authors = [
   { name = "Joshua C. Macdonald", email = "jmacdo16@jh.edu" },
@@ -135,7 +135,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*" = ["ANN201", "ANN401", "ARG002", "D102", "D103", "INP001", "PLR6301", "S101"]
+"tests/**/*" = ["ANN201", "ANN401", "ARG002", "D102", "D103", "INP001", "PLR6301", "S101", "S404", "S603"]
+"scripts/**/*" = ["T201"]
 "examples/**/*" = ["ANN401", "ARG002", "ERA001", "INP001", "PLR6301", "T201"]
 "src/trade_study/protocols.py" = ["ANN401"]
 

@@ -14,8 +14,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
+      - name: Validate release metadata and tag
+        run: python scripts/release_validate.py --release-tag "$GITHUB_REF_NAME"
       - name: Build
         run: uv build
+      - name: Check distribution metadata
+        run: uvx twine check --strict dist/*
+      - name: Smoke-test the built wheel
+        run: |
+          wheel="$(find dist -name '*.whl' -print -quit)"
+          test -n "$wheel"
+          uv venv /tmp/trade-study-release-smoke
+          uv pip install --python /tmp/trade-study-release-smoke/bin/python "$wheel"
+          /tmp/trade-study-release-smoke/bin/python -c \
+            "import trade_study; print(trade_study.__version__)"
       - uses: actions/upload-artifact@v4
         with:
           name: dist

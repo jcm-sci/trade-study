@@ -89,8 +89,8 @@ Each one becomes a column in the results table.
 --8<-- "examples/cstr_study.py:observables"
 ```
 
-**Factors** declare what can vary. This example uses four continuous
-operating parameters with physical bounds:
+**Factors** declare what can vary. This example uses four discrete sets of
+operating values within physically motivated ranges:
 
 ```python
 --8<-- "examples/cstr_study.py:factors"
@@ -117,11 +117,13 @@ which factors influence the objectives most:
 
 ## Build the study phases
 
-A `Study` chains multiple **Phases**.  Phase 1 explores the design space
-broadly with a 60-point Latin hypercube.  The `top_k_pareto_filter(20)`
-callback selects the 20 best designs (by Pareto rank) and passes them to
-Phase 2. Phase 2 re-evaluates those 20 designs with fresh noise draws to
-check variation under the same assumed model.
+A `Study` chains multiple **Phases**. Phase 1 evaluates the complete
+$4 \times 4 \times 3 \times 2 = 96$-configuration factorial grid. Phase 2
+uses the Pareto front from those results to bound temperature and residence
+time, then evaluates a newly generated $5 \times 5 \times 3 \times 3 = 225$
+configuration grid within that region. The example uses a stable seed for
+each configuration: it is deterministic across Python processes, but it is
+not a replicated-noise uncertainty analysis.
 
 ```python
 --8<-- "examples/cstr_study.py:phases"

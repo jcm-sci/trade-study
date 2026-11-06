@@ -6,16 +6,16 @@ default: lint test
 
 # Auto-format all Python sources.
 format:
-	uv run ruff format --preview src tests examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py examples/fisher_op_stack.py
+	uv run ruff format --preview src tests scripts examples/cstr_study.py examples/monitoring_study.py examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py examples/fisher_op_stack.py
 
 # Lint-fix all Python sources.
 check:
-	uv run ruff check --preview --fix src tests examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py examples/fisher_op_stack.py
+	uv run ruff check --preview --fix src tests scripts examples/cstr_study.py examples/monitoring_study.py examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py examples/fisher_op_stack.py
 
 # Check formatting + lint without modifying files (matches CI).
 lint:
-	uv run ruff format --preview --check src tests examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py examples/fisher_op_stack.py
-	uv run ruff check --preview src tests examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py examples/fisher_op_stack.py
+	uv run ruff format --preview --check src tests scripts examples/cstr_study.py examples/monitoring_study.py examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py examples/fisher_op_stack.py
+	uv run ruff check --preview src tests scripts examples/cstr_study.py examples/monitoring_study.py examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py examples/fisher_op_stack.py
 
 # ── Tests ────────────────────────────────────────────────────────────
 
