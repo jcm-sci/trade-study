@@ -34,6 +34,7 @@ from .fisher import (
 )
 from .io import load_results, save_results
 from .paired import PairedDifference, paired_difference, paired_rank
+from .power import AdequateDesign, PowerCurve, minimum_adequate, power_curve
 from .proportions import (
     ProportionInterval,
     proportion_interval,
@@ -82,6 +83,7 @@ from .viz import plot_calibration, plot_front, plot_parallel, plot_scores
 
 __all__ = [
     "AdaptiveSession",
+    "AdequateDesign",
     "Annotation",
     "Constraint",
     "Direction",
@@ -97,6 +99,7 @@ __all__ = [
     "PairedDifference",
     "PartialEvaluator",
     "Phase",
+    "PowerCurve",
     "PredictionSupport",
     "PreferencePolicy",
     "PreferenceSweep",
@@ -131,6 +134,7 @@ __all__ = [
     "igd_plus",
     "load_result_bundle",
     "load_results",
+    "minimum_adequate",
     "paired_difference",
     "paired_rank",
     "pareto_rank",
@@ -138,6 +142,7 @@ __all__ = [
     "plot_front",
     "plot_parallel",
     "plot_scores",
+    "power_curve",
     "preference_sweep",
     "prepare_slurm_plan",
     "proportion_interval",

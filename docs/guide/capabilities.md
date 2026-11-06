@@ -16,6 +16,7 @@ scoring, optimization and plotting; statistical estimators belong to the caller.
 | Allocate replication | `run_sequential`, `ReplicationPolicy` | Fixed or adaptive policy with recorded bounds, counts and assumptions; power is not automatically certified. |
 | Screen local information | `screen_fisher`, `FisherScreenPolicy`, `fisher_screen_counts` | Caller-qualified bounded host matrices, declared directions, existing constraints and retained unavailable outcomes; [scope and example](fisher.md). |
 | Plan fixed proportion precision | `proportion_interval`, `replicates_for_half_width` | [Proportions guide](proportion-intervals.md); Wilson precision is not a power calculation or sequential interval. |
+| Estimate simulated power and minimum size | `power_curve`, `minimum_adequate` | [Power curves](../api/power.md); fixed-sample intervals on a scanned grid, optionally Bonferroni-adjusted; not an analytic sample-size formula. |
 | Select nondominated alternatives | `extract_front`, `pareto_rank`, `hypervolume`, `igd_plus` | `pareto`; positive objective scaling preserves front membership. |
 | Report decisions across preferences | `preference_sweep`, `PreferencePolicy` | Regret, practical equivalence and optional paired uncertainty; preferences are specified by the caller. |
 | Chain study phases | `Study`, `Phase`, phase filters | Requirements follow each chosen filter/runner; preserve reproducibility between phases. |

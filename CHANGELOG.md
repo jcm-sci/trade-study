@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Monte Carlo power curves and minimum adequate design sizes from raw 0/1
+  indicator replicates (`power_curve`, `minimum_adequate`), stratified by the
+  other factors, with optional Bonferroni adjustment and a monotonicity flag
+  (#231).
+
 - Make table sensitivity refuse varying discrete/categorical or undeclared
   inputs, with explicit observed-stratum conditioning and bookkeeping exclusions.
   Bind observed constants, retain input/sampling scope and original row identities,

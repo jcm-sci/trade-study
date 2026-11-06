@@ -85,6 +85,7 @@ nav:
       - Adaptive Sessions: api/session.md
       - Paired Comparisons: api/paired.md
       - Proportion Intervals: api/proportions.md
+      - Power Curves: api/power.md
       - Local Information Screens: api/fisher.md
       - Decision Summaries: api/decision.md
       - Post-hoc Sensitivity: api/sensitivity.md
