@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Exact event-driven trial design (`trade_study.trials`): conditional-binomial
+  efficacy intervals, event targets, fixed-duration power, Lan-DeMets
+  group-sequential boundaries with non-binding futility and exact operating
+  characteristics, and calendar-time event accrual (#233).
+
 - Monte Carlo power curves and minimum adequate design sizes from raw 0/1
   indicator replicates (`power_curve`, `minimum_adequate`), stratified by the
   other factors, with optional Bonferroni adjustment and a monotonicity flag
