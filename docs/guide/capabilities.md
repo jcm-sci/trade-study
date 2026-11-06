@@ -18,6 +18,7 @@ scoring, optimization and plotting; statistical estimators belong to the caller.
 | Plan fixed proportion precision | `proportion_interval`, `replicates_for_half_width` | [Proportions guide](proportion-intervals.md); Wilson precision is not a power calculation or sequential interval. |
 | Estimate simulated power and minimum size | `power_curve`, `minimum_adequate` | [Power curves](../api/power.md); fixed-sample intervals on a scanned grid, optionally Bonferroni-adjusted; not an analytic sample-size formula. |
 | Design event-driven comparative trials | `events_required`, `design_group_sequential`, `operating_characteristics`, `expected_events_by_period` | [Event-driven trials](../api/trials.md); exact conditional-binomial calculations assuming independent events; simulate clustering or misclassification. |
+| Tabulate replicated verdicts by truth | `confusion_table`, `ConfusionTable` | [Confusion tables](../api/confusion.md); row-wise fixed-sample intervals with an optional Bonferroni level over columns; failed trials are a column. |
 | Select nondominated alternatives | `extract_front`, `pareto_rank`, `hypervolume`, `igd_plus` | `pareto`; positive objective scaling preserves front membership. |
 | Report decisions across preferences | `preference_sweep`, `PreferencePolicy` | Regret, practical equivalence and optional paired uncertainty; preferences are specified by the caller. |
 | Chain study phases | `Study`, `Phase`, phase filters | Requirements follow each chosen filter/runner; preserve reproducibility between phases. |
