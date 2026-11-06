@@ -131,3 +131,38 @@ def test_release_fixture_rejects_metadata_drift(
 
     with pytest.raises(SystemExit, match=message):
         validate_stable_citation(tmp_path)
+
+
+def test_release_rejects_doi_labelled_for_another_release(tmp_path: Path) -> None:
+    _write_release_fixture(tmp_path)
+    path = tmp_path / "CITATION.cff"
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + '    description: "Zenodo archive for release 1.2.2"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit, match=r"belongs to release '1\.2\.2'"):
+        validate_stable_citation(tmp_path)
+
+
+def test_release_accepts_doi_labelled_for_same_release(tmp_path: Path) -> None:
+    _write_release_fixture(tmp_path)
+    path = tmp_path / "CITATION.cff"
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + '    description: "Zenodo archive for release 1.2.3"\n',
+        encoding="utf-8",
+    )
+
+    assert validate_stable_citation(tmp_path)[0] == "1.2.3"
+
+
+def test_pyproject_version_requires_project_table(tmp_path: Path) -> None:
+    _write_release_fixture(tmp_path)
+    tmp_path.joinpath("pyproject.toml").write_text(
+        '[tool.example]\nversion = "1.2.3"\n', encoding="utf-8"
+    )
+
+    with pytest.raises(SystemExit, match=r"\[project\] version"):
+        validate_development_metadata(tmp_path)

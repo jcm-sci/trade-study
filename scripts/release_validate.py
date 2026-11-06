@@ -7,8 +7,6 @@ import pathlib
 import re
 from typing import Final
 
-import tomllib
-
 REPO_ROOT: Final[pathlib.Path] = pathlib.Path(__file__).resolve().parents[1]
 RELEASE_VERSION: Final[re.Pattern[str]] = re.compile(
     r"^[0-9]+\.[0-9]+\.[0-9]+(?:(?:a|b|rc)[0-9]+)?$"
@@ -24,14 +22,26 @@ def declared_versions(repo_root: pathlib.Path = REPO_ROOT) -> dict[str, str]:
     Raises:
         SystemExit: If the runtime version file has an unsupported format.
     """
-    project = tomllib.loads((repo_root / "pyproject.toml").read_text("utf-8"))
+    pyproject = (repo_root / "pyproject.toml").read_text("utf-8")
+    # A regex instead of tomllib keeps this importable on Python 3.10.
+    table = re.search(
+        r"^\[project\]\s*$(.*?)(?=^\[|\Z)", pyproject, re.MULTILINE | re.DOTALL
+    )
+    project = (
+        None
+        if table is None
+        else re.search(r'^version\s*=\s*"([^"]+)"\s*$', table.group(1), re.MULTILINE)
+    )
+    if project is None:
+        msg = "pyproject.toml must declare [project] version as a string."
+        raise SystemExit(msg)
     version_source = (repo_root / "src/trade_study/_version.py").read_text("utf-8")
     match = re.fullmatch(r'__version__ = "([^"]+)"\n?', version_source)
     if match is None:
         msg = "src/trade_study/_version.py has an unsupported format."
         raise SystemExit(msg)
     return {
-        "pyproject.toml": str(project["project"]["version"]),
+        "pyproject.toml": project.group(1),
         "src/trade_study/_version.py": match.group(1),
     }
 
@@ -135,6 +145,20 @@ def validate_stable_citation(repo_root: pathlib.Path = REPO_ROOT) -> tuple[str, 
     citation = (repo_root / "CITATION.cff").read_text("utf-8")
     if f'value: "{doi}"' not in citation:
         msg = "CITATION.cff identifiers must include its exact top-level release DOI."
+        raise SystemExit(msg)
+    # Zenodo mints a version DOI only after publication, so a tagged commit may
+    # cite the concept DOI, but never a DOI labelled for a different release.
+    labelled = re.search(
+        rf'value: "{re.escape(doi)}"\s*\n\s*description: "[^"\n]*release '
+        r'([0-9][^"\s]*)"',
+        citation,
+    )
+    if labelled is not None and labelled.group(1) != version:
+        msg = (
+            f"CITATION.cff top-level DOI {doi!r} belongs to release "
+            f"{labelled.group(1)!r}, not {version!r}; cite the concept DOI until "
+            "Zenodo mints the new release DOI."
+        )
         raise SystemExit(msg)
     for relative in ("README.md", "docs/citation.md"):
         fields = _bibtex_software_fields(repo_root / relative)
