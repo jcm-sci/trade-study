@@ -33,7 +33,7 @@ estimate. Assess them by simulation with [`run_grid`](runner.md) and
 `events_required` returns the smallest target beyond which power never falls
 below the goal. Group-sequential boundaries spend at most the Lan-DeMets
 alpha available at each look, so the alpha actually spent (`alpha_spent`) can
-be below nominal; unspent alpha is not carried forward. Futility is
+be below nominal; unspent alpha carries forward to later looks. Futility is
 non-binding: boundaries ignore it, so type I error is controlled whether or
 not it is applied.
 
