@@ -83,18 +83,24 @@ described above.  Each stage is a few lines of numpy:
 
 ## Simulator and scorer
 
-The **Simulator** applies the observation model with a per-config
-deterministic seed.  The **Scorer** computes three objectives:
+The **Simulator** applies the observation model with a SHA-256-derived,
+per-configuration seed that is stable across Python processes. The
+**Scorer** computes three objectives:
 
 | Observable | Direction | What it measures |
 |------------|-----------|------------------|
 | RMSE | minimize | RMS error after interpolating back to the reference grid |
-| Spectral fidelity | maximize | Fraction of spectral power recovered in the 10 min – 2 h band |
+| Spectral fidelity | maximize | Fraction of spectral power recovered in the 2.5–30 min band |
 | Station cost | minimize | Additive cost model over sample rate, ADC, grade, and sensor count |
 
 ```python
 --8<-- "examples/monitoring_study.py:world"
 ```
+
+Each configuration is evaluated for one synthetic reference day and one
+seeded observation realization. The example therefore demonstrates API and
+objective construction; it does not estimate design performance across days,
+environmental regimes, calibration states, or repeated sensor-noise draws.
 
 ## Define observables and factors
 

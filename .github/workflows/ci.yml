@@ -23,16 +23,18 @@ jobs:
         run: uv sync --extra dev
       - name: Format check
         run: >-
-          uv run ruff format --preview --check src tests
+          uv run ruff format --preview --check src tests scripts
           examples/serosurvey_study.py examples/serosurvey_study.ipynb
           examples/serosurvey_contexts.py examples/serosurvey_frames.py
+          examples/cstr_study.py examples/monitoring_study.py
           examples/replicated_study.py
           examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py examples/fisher_op_stack.py
       - name: Lint
         run: >-
-          uv run ruff check --preview src tests
+          uv run ruff check --preview src tests scripts
           examples/serosurvey_study.py examples/serosurvey_study.ipynb
           examples/serosurvey_contexts.py examples/serosurvey_frames.py
+          examples/cstr_study.py examples/monitoring_study.py
           examples/replicated_study.py
           examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py examples/fisher_op_stack.py
       - name: Type check (strict)

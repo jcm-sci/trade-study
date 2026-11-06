@@ -6,16 +6,16 @@ default: lint test
 
 # Auto-format all Python sources.
 format:
-	uv run ruff format --preview src tests examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py examples/fisher_op_stack.py
+	uv run ruff format --preview src tests scripts examples/cstr_study.py examples/monitoring_study.py examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py examples/fisher_op_stack.py
 
 # Lint-fix all Python sources.
 check:
-	uv run ruff check --preview --fix src tests examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py examples/fisher_op_stack.py
+	uv run ruff check --preview --fix src tests scripts examples/cstr_study.py examples/monitoring_study.py examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py examples/fisher_op_stack.py
 
 # Check formatting + lint without modifying files (matches CI).
 lint:
-	uv run ruff format --preview --check src tests examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py examples/fisher_op_stack.py
-	uv run ruff check --preview src tests examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py examples/fisher_op_stack.py
+	uv run ruff format --preview --check src tests scripts examples/cstr_study.py examples/monitoring_study.py examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py examples/fisher_op_stack.py
+	uv run ruff check --preview src tests scripts examples/cstr_study.py examples/monitoring_study.py examples/replicated_study.py examples/illustration_artifacts.py examples/illustrate_replicated_study.py examples/frozen_slurm.py examples/fisher_op_stack.py
 
 # ── Tests ────────────────────────────────────────────────────────────
 
@@ -63,7 +63,7 @@ build-test:
 	cd "$CLEANROOM"
 	unset PYTHONPATH
 	"$CLEANROOM/venv/bin/python" -c 'import trade_study; assert "site-packages" in trade_study.__file__'
-	"$CLEANROOM/venv/bin/python" -m pytest --doctest-modules --pyargs trade_study tests -q -x
+	"$CLEANROOM/venv/bin/python" -m pytest --doctest-modules --pyargs trade_study tests -q -x --ignore=tests/test_release_validate.py
 	echo "Clean-room test passed."
 
 # Full pre-publish dry run.

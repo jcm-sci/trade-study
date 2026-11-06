@@ -28,7 +28,8 @@ This package targets researchers and practitioners who need:
 
 - structured multi-phase experimental design (screen → refine → benchmark),
 - multi-objective Pareto analysis across heterogeneous factors, and
-- a reproducible Python API that separates domain logic from study orchestration.
+- a seed-controlled Python API with provenance hooks that separates domain
+  logic from study orchestration.
 
 ## Study operations
 
@@ -252,6 +253,16 @@ existing results table through a validated surrogate.
 
 ## Release compatibility
 
+The `main` branch is the 0.7.0 development line (`0.7.0.dev0`). Its public
+Fisher-information, sensitivity, and decision-summary interfaces may change
+before the final 0.7.0 release. The latest stable PyPI release is 0.6.0.
+
+Version 0.6.0 added an experimental frozen Slurm launch layer with immutable
+task plans, completion receipts and accompanying documentation and scope
+corrections. The other interfaces described above span earlier releases and
+the current unreleased development line; see the changelog for their release
+history.
+
 Version 0.5.1 fixes score-unit sensitivity in `stack_scores` and prevents
 `ensemble_predict` from modifying supplied weights, including read-only arrays
 and views. It also updates executable documentation and illustrated examples.
@@ -305,12 +316,18 @@ If you use this package in your research, please cite:
   title = {{trade-study}: Multi-Objective Trade-Study Orchestration},
   year = {2026},
   url = {https://github.com/jcm-sci/trade-study},
-  version = {0.5.1},
-  doi = {10.5281/zenodo.19599838},
+  version = {0.6.0},
+  doi = {10.5281/zenodo.23497881},
 }
 ```
 
+This DOI identifies release 0.6.0. The badge at the top of this page uses the
+concept DOI, which resolves to the archive containing all package releases.
+
 See [CITATION.cff](CITATION.cff) for machine-readable metadata.
+
+Security issues should be reported through the private process in
+[SECURITY.md](SECURITY.md).
 
 ## License
 

@@ -628,7 +628,10 @@ def _cross_val_accuracy(
     if n_folds < 2:
         return float("nan"), float("nan")
 
-    from sklearn.model_selection import GroupKFold, KFold  # type: ignore[import-untyped]
+    from sklearn.model_selection import (  # type: ignore[import-untyped]
+        GroupKFold,
+        KFold,
+    )
 
     kfold = KFold(n_splits=n_folds, shuffle=True, random_state=seed)
     splits = (

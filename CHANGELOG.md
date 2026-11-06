@@ -37,6 +37,17 @@ All notable changes to this project will be documented in this file.
 - Record execution ownership, host-result boundaries, Fisher-screen integration
   requirements and separate qualification targets for penalized stacking and EVSI.
 
+- Mark `main` as the 0.7.0 development line (`0.7.0.dev0`), cite the 0.6.0
+  Zenodo DOI alongside the concept DOI, and add a private security policy.
+- Derive CSTR and monitoring example seeds from a SHA-256 of the configuration
+  instead of `hash()`, so regenerated figures do not depend on `PYTHONHASHSEED`.
+
+### Infrastructure
+
+- Validate version, citation metadata and the release tag before publishing,
+  check distribution metadata with `twine --strict`, and smoke-test the wheel.
+- Lint the release script and the CSTR and monitoring examples in CI.
+
 ## [0.6.0] - 2026-10-20
 
 ### Added

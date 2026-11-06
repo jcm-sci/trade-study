@@ -11,6 +11,8 @@ only numpy.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 
 import numpy as np
@@ -29,6 +31,28 @@ from trade_study import (
 )
 
 ASSET_DIR = "docs/assets"
+ROOT_SEED = 20261022
+
+
+def stable_config_seed(config: dict[str, Any], *, stream: str) -> int:
+    """Derive a process-independent seed from a configuration.
+
+    Returns:
+        An unsigned 64-bit seed derived from the root seed, stream, and config.
+    """
+    payload = {
+        "config": config,
+        "root_seed": ROOT_SEED,
+        "stream": stream,
+    }
+    encoded = json.dumps(
+        payload,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+    return int.from_bytes(hashlib.sha256(encoded).digest()[:8], "big")
+
 
 # ── Ground-truth signal ────────────────────────────────────────────
 
@@ -160,7 +184,7 @@ class StationSimulator:
         Returns:
             Tuple of (reference_signal, degraded_observations).
         """
-        seed = hash(frozenset(config.items())) % 2**32
+        seed = stable_config_seed(config, stream="monitoring-observation")
         rng = np.random.default_rng(seed)
         obs = observe(
             REFERENCE,
@@ -297,7 +321,7 @@ def _plot_best_vs_cheapest(
     cheap_cfg: dict[str, Any],
 ) -> None:
     """Compare best-RMSE and cheapest Pareto designs against truth."""
-    seed_best = hash(frozenset(best_cfg.items())) % 2**32
+    seed_best = stable_config_seed(best_cfg, stream="monitoring-observation")
     obs_best = observe(
         REFERENCE,
         sample_interval=best_cfg["sample_interval"],
@@ -306,7 +330,7 @@ def _plot_best_vs_cheapest(
         n_sensors=best_cfg["n_sensors"],
         rng=np.random.default_rng(seed_best),
     )
-    seed_cheap = hash(frozenset(cheap_cfg.items())) % 2**32
+    seed_cheap = stable_config_seed(cheap_cfg, stream="monitoring-observation")
     obs_cheap = observe(
         REFERENCE,
         sample_interval=cheap_cfg["sample_interval"],

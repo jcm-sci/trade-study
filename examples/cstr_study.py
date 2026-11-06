@@ -13,6 +13,8 @@ no external dependencies beyond numpy.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 from typing import Any
 
@@ -40,6 +42,31 @@ from trade_study import (
 )
 
 ASSET_DIR = "docs/assets"
+ROOT_SEED = 20261022
+
+
+def stable_config_seed(config: dict[str, Any], *, stream: str) -> int:
+    """Derive a process-independent seed from a configuration.
+
+    Python's built-in ``hash`` is intentionally randomized between
+    interpreter processes, so it is not suitable for reproducible examples.
+
+    Returns:
+        An unsigned 64-bit seed derived from the root seed, stream, and config.
+    """
+    payload = {
+        "config": config,
+        "root_seed": ROOT_SEED,
+        "stream": stream,
+    }
+    encoded = json.dumps(
+        payload,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+    return int.from_bytes(hashlib.sha256(encoded).digest()[:8], "big")
+
 
 # ── Reactor kinetics (ground truth) ────────────────────────────────
 
@@ -118,7 +145,9 @@ class CSTRSimulator:
             inlet_concentration=config["inlet_concentration"],
             coolant_flow=config["coolant_flow"],
         )
-        rng = np.random.default_rng(hash(frozenset(config.items())) % 2**32)
+        rng = np.random.default_rng(
+            stable_config_seed(config, stream="cstr-observation")
+        )
         noisy = {
             k: max(0.0, v + rng.normal(0, 0.02 * abs(v) + 1e-6))
             for k, v in truth.items()
@@ -246,7 +275,6 @@ phases = [
     Phase(
         name="discovery",
         grid=discovery_grid,
-        filter_fn=top_k_pareto_filter(40),
     ),
     Phase(
         name="refinement",
