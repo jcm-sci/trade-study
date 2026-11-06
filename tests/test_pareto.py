@@ -229,6 +229,44 @@ def test_hypervolume_no_directions() -> None:
     assert hv == pytest.approx(1.0)
 
 
+@pytest.mark.parametrize(
+    ("front", "ref", "direction", "weight", "expected"),
+    [
+        ([[1.0], [2.0]], [3.0], Direction.MINIMIZE, 1.0, 2.0),
+        ([[5.0], [4.0]], [1.0], Direction.MAXIMIZE, 1.0, 4.0),
+        ([[1.0]], [3.0], Direction.MINIMIZE, 0.5, 1.0),
+        ([[4.0]], [3.0], Direction.MINIMIZE, 1.0, 0.0),
+        (np.empty((0, 1)), [3.0], Direction.MINIMIZE, 1.0, 0.0),
+        ([[1.0], [np.nan], [2.0]], [3.0], Direction.MINIMIZE, 1.0, 2.0),
+        ([[np.nan]], [3.0], Direction.MINIMIZE, 1.0, 0.0),
+        ([1.0], [3.0], Direction.MINIMIZE, 1.0, 2.0),
+    ],
+)
+def test_hypervolume_single_objective_is_analytic(
+    monkeypatch: pytest.MonkeyPatch,
+    front: list[list[float]],
+    ref: list[float],
+    direction: Direction,
+    weight: float,
+    expected: float,
+) -> None:
+    """1-D hypervolume is an exact length and never reaches moocore (#229)."""
+    import pymoo.indicators.hv as hv_module
+
+    def _fail(*_args: object, **_kwargs: object) -> None:
+        msg = "native hypervolume must not be called for one objective"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(hv_module, "HV", _fail)
+    hv = hypervolume(
+        np.asarray(front, dtype=float),
+        np.asarray(ref, dtype=float),
+        [direction],
+        [weight],
+    )
+    assert hv == pytest.approx(expected)
+
+
 def test_hypervolume_returns_float() -> None:
     front = np.array([[1.0, 1.0]])
     ref = np.array([3.0, 3.0])

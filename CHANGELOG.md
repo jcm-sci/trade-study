@@ -19,6 +19,11 @@ All notable changes to this project will be documented in this file.
   constraints, distinct unavailable/failed outcomes and planned-ID counts.
   Export primitive JSON context/policy/evidence without new dependencies.
 
+### Fixed
+
+- Compute single-objective `hypervolume` analytically instead of calling
+  moocore, whose 1-D path can segfault and abort `Study.compare_phases` (#229).
+
 ### Documentation
 
 - Correct Sobol-screen budgets to the actual second-order design:
