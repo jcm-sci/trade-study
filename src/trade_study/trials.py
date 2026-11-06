@@ -165,17 +165,28 @@ def efficacy_interval(
 def _critical(total: int, rho: float, margin: float, confidence: float) -> int:
     """Largest treatment-arm count that succeeds, or -1.
 
+    Success is monotone (the lower bound falls as the treatment count rises),
+    so bisection finds the boundary.
+
     Returns:
         Critical count.
     """
-    critical = -1
-    for k in range(total + 1):
-        if not efficacy_interval(
+
+    def succeeds(k: int) -> bool:
+        return efficacy_interval(
             k, total, rho=rho, margin=margin, confidence=confidence
-        ).success:
-            break
-        critical = k
-    return critical
+        ).success
+
+    if not succeeds(0):
+        return -1
+    lo, hi = 0, total
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if succeeds(mid):
+            lo = mid
+        else:
+            hi = mid - 1
+    return lo
 
 
 def conditional_power(
@@ -378,7 +389,8 @@ def design_group_sequential(
     At each look the critical count is the largest whose exact null
     probability of first crossing does not exceed the alpha newly available.
     Discreteness means the alpha actually spent can be below the nominal
-    amount; unspent alpha is not carried forward.
+    amount; each look's budget is the spending function minus the alpha
+    actually spent so far, so unspent alpha carries forward to later looks.
 
     Args:
         looks: Strictly increasing positive cumulative event totals; the last
