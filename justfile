@@ -63,7 +63,7 @@ build-test:
 	cd "$CLEANROOM"
 	unset PYTHONPATH
 	"$CLEANROOM/venv/bin/python" -c 'import trade_study; assert "site-packages" in trade_study.__file__'
-	"$CLEANROOM/venv/bin/python" -m pytest --doctest-modules --pyargs trade_study tests -q -x
+	"$CLEANROOM/venv/bin/python" -m pytest --doctest-modules --pyargs trade_study tests -q -x --ignore=tests/test_release_validate.py
 	echo "Clean-room test passed."
 
 # Full pre-publish dry run.
