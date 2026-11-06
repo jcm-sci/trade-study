@@ -21,8 +21,10 @@ declared row without a cohort raises, and a failed trial is a column of its
 own, never a dropped cohort. The intervals assume independent cohorts and a
 prespecified number per row; the caller establishes both. Without
 `adjustment` each interval is marginal; `adjustment="bonferroni"` uses level
-`1 - (1 - confidence) / len(columns)` so that the statements about one row hold
-simultaneously at the nominal level. `power_curve` reads one 0/1 indicator per
+`1 - (1 - confidence) / len(columns)` so that the statements about the columns of
+one row hold simultaneously at approximately the nominal level (Wilson coverage is
+approximate, and different rows are separate statements that are not adjusted).
+Labels that compare equal (`1`, `True`, `1.0`) are one label. `power_curve` reads one 0/1 indicator per
 design; the confusion table reports all verdicts of a design together.
 
 ::: trade_study.ConfusionTable

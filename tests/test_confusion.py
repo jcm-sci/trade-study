@@ -89,3 +89,66 @@ def test_invalid_input_is_refused(
 def test_unsupported_adjustment_is_refused() -> None:
     with pytest.raises(ValueError, match="adjustment"):
         _table(adjustment="holm")
+
+
+def test_bonferroni_cells_equal_proportion_interval_at_the_adjusted_level() -> None:
+    table = _table(adjustment="bonferroni")
+    level = 1 - 0.05 / len(COLUMNS)
+    for i, row in enumerate(table.rows):
+        for j, column in enumerate(table.columns):
+            expected = proportion_interval(
+                table.counts[i][j], table.row_total(row), confidence=level
+            )
+            assert table.cell(row, column) == expected
+
+
+def test_a_single_column_has_the_marginal_level() -> None:
+    table = confusion_table(
+        ["A", "A"], ["A", "A"], ["A"], ["A"], adjustment="bonferroni"
+    )
+    assert table.confidence == pytest.approx(0.95)
+
+
+def test_equal_comparing_labels_are_the_same_label() -> None:
+    table = confusion_table([True, False], [1, 0], rows=[1, 0], columns=[True, False])
+    assert table.counts == ((1, 0), (0, 1))
+
+
+@pytest.mark.parametrize(
+    ("truth", "verdict", "rows", "columns", "pattern"),
+    [
+        ([[1], [2]], ["A", "B"], ROWS, COLUMNS, "hashable"),
+        (["A", "B"], ["A", "B"], [[1], [2]], COLUMNS, "hashable"),
+        (["A"], ["A"], "A", COLUMNS, "not a single string"),
+        (["A"], ["A"], ROWS, "AB", "not a single string"),
+        ([], [], ROWS, COLUMNS, "without a cohort"),
+    ],
+)
+def test_malformed_labels_raise_value_error(
+    truth: list[object],
+    verdict: list[object],
+    rows: object,
+    columns: object,
+    pattern: str,
+) -> None:
+    with pytest.raises(ValueError, match=pattern):
+        confusion_table(truth, verdict, rows, columns)  # type: ignore[arg-type]
+
+
+def test_unknown_cell_labels_name_the_label_and_the_table_is_frozen() -> None:
+    table = _table()
+    with pytest.raises(ValueError, match="'C' is not a declared row"):
+        table.cell("C", "A")
+    with pytest.raises(ValueError, match="'zzz' is not a declared column"):
+        table.cell("A", "zzz")
+    with pytest.raises(ValueError, match="not a declared row"):
+        table.row_total("C")
+    with pytest.raises(AttributeError):
+        table.rows = ()  # type: ignore[misc]
+
+
+def test_invalid_confidence_and_method_are_refused() -> None:
+    with pytest.raises(ValueError, match="confidence"):
+        _table(confidence=1.0)
+    with pytest.raises(ValueError, match="method"):
+        _table(method="exact")

@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
   efficacy intervals, event targets, fixed-duration power, Lan-DeMets
   group-sequential boundaries with non-binding futility and exact operating
   characteristics, and calendar-time event accrual (#233).
+
 - Confusion tables for replicated recovery and discrimination studies
   (`confusion_table`, `ConfusionTable`): counts of verdicts by truth with
   row-wise fixed-sample intervals, an optional Bonferroni level over columns,

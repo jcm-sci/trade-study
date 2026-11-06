@@ -37,7 +37,8 @@ class ConfusionTable:
         confidence: Two-sided level of each reported interval (after any
             adjustment).
         family_confidence: Nominal simultaneous level across the columns of a
-            row; equals ``confidence`` when ``adjustment`` is ``None``.
+            row (approximate for Wilson intervals); equals ``confidence``
+            when ``adjustment`` is ``None``.
         adjustment: ``None`` (marginal intervals) or ``"bonferroni"``.
         method: Interval method passed to ``proportion_interval``.
     """
@@ -57,7 +58,9 @@ class ConfusionTable:
         Returns:
             The fixed-sample interval of that cell.
         """
-        return self.intervals[self.rows.index(row)][self.columns.index(column)]
+        return self.intervals[_index(self.rows, row, "row")][
+            _index(self.columns, column, "column")
+        ]
 
     def row_total(self, row: Hashable) -> int:
         """Number of cohorts of ``row``, including failed trials.
@@ -65,18 +68,34 @@ class ConfusionTable:
         Returns:
             The row total.
         """
-        return sum(self.counts[self.rows.index(row)])
+        return sum(self.counts[_index(self.rows, row, "row")])
 
 
 def _unique(labels: Sequence[Hashable], name: str) -> tuple[Hashable, ...]:
-    declared = tuple(labels)
+    if isinstance(labels, str | bytes):
+        msg = f"{name} must be a sequence of labels, not a single string"
+        raise ValueError(msg)  # ruff: ignore[type-check-without-type-error]
+    try:
+        declared = tuple(labels)
+        distinct = len(set(declared))
+    except TypeError as error:
+        msg = f"{name} must be an iterable of hashable labels"
+        raise ValueError(msg) from error
     if not declared:
         msg = f"{name} must not be empty"
         raise ValueError(msg)
-    if len(set(declared)) != len(declared):
+    if distinct != len(declared):
         msg = f"{name} contains a repeated label"
         raise ValueError(msg)
     return declared
+
+
+def _index(labels: tuple[Hashable, ...], label: Hashable, name: str) -> int:
+    try:
+        return labels.index(label)
+    except ValueError:
+        msg = f"{label!r} is not a declared {name}"
+        raise ValueError(msg) from None
 
 
 def confusion_table(
@@ -98,8 +117,11 @@ def confusion_table(
     interval for independent cohorts of a prespecified number per row; the
     caller establishes the independence and the number (see
     ``proportion_interval``). With ``adjustment="bonferroni"`` the intervals of
-    a row use level ``1 - (1 - confidence) / len(columns)`` so that the
-    statements about one row hold simultaneously at the nominal level.
+    a row use level ``1 - (1 - confidence) / len(columns)``, so that the
+    statements about the columns of one row hold simultaneously at
+    approximately the nominal level (Wilson coverage is approximate; the
+    rows are separate statements and are not adjusted). Labels that compare
+    equal (``1``, ``True`` and ``1.0``) are the same label.
 
     Args:
         truth: Generating label of each cohort.
@@ -138,13 +160,21 @@ def confusion_table(
         raise ValueError(msg)
     row_labels = _unique(rows, "rows")
     column_labels = _unique(columns, "columns")
-    undeclared = (set(truth) - set(row_labels)) | (set(verdict) - set(column_labels))
+    try:
+        undeclared = (set(truth) - set(row_labels)) | (
+            set(verdict) - set(column_labels)
+        )
+    except TypeError as error:
+        msg = "truth and verdict must contain hashable labels"
+        raise ValueError(msg) from error
     if undeclared:
         msg = f"labels not declared in rows or columns: {sorted(map(repr, undeclared))}"
         raise ValueError(msg)
+    row_at = {label: i for i, label in enumerate(row_labels)}
+    column_at = {label: j for j, label in enumerate(column_labels)}
     tally = [[0] * len(column_labels) for _ in row_labels]
     for t, v in zip(truth, verdict, strict=True):
-        tally[row_labels.index(t)][column_labels.index(v)] += 1
+        tally[row_at[t]][column_at[v]] += 1
     empty = [
         row for row, counts in zip(row_labels, tally, strict=True) if not sum(counts)
     ]
