@@ -33,6 +33,7 @@ from .fisher import (
     fisher_screen_counts,
     screen_fisher,
 )
+from .information import ModelInformation, TruthScore, model_information
 from .io import load_results, save_results
 from .paired import PairedDifference, paired_difference, paired_rank
 from .power import AdequateDesign, PowerCurve, minimum_adequate, power_curve
@@ -124,6 +125,7 @@ __all__ = [
     "FisherScreenResult",
     "FrozenCheckout",
     "GroupSequentialDesign",
+    "ModelInformation",
     "Observable",
     "OperatingCharacteristics",
     "PairedDifference",
@@ -151,6 +153,7 @@ __all__ = [
     "SurrogateModel",
     "TableSensitivity",
     "TrialResult",
+    "TruthScore",
     "__version__",
     "aggregate_bucketed_config",
     "alpha_spending",
@@ -177,6 +180,7 @@ __all__ = [
     "load_results",
     "max_events_for_power",
     "minimum_adequate",
+    "model_information",
     "operating_characteristics",
     "paired_difference",
     "paired_rank",
