@@ -148,8 +148,8 @@ def hypervolume(
     _require_pymoo()
     from pymoo.indicators.hv import HV  # type: ignore[import-untyped]
 
-    obj = front.copy()
-    rp = ref_point.copy()
+    obj = np.atleast_2d(np.asarray(front, dtype=float)).copy()
+    rp = np.atleast_1d(np.asarray(ref_point, dtype=float)).copy()
     if directions is not None:
         for j, d in enumerate(directions):
             if d == Direction.MAXIMIZE:
@@ -159,11 +159,12 @@ def hypervolume(
         for j, w in enumerate(weights):
             obj[:, j] *= w
             rp[j] *= w
-    if obj.ndim == 2 and obj.shape[1] == 1:
+    if obj.shape[1] == 1:
         # moocore's native 1-D path can segfault (#229); the exact value is a length.
-        if obj.shape[0] == 0:
-            return 0.0
-        return max(0.0, float(rp[0] - np.min(obj[:, 0])))
+        # Like moocore, only points strictly better than the reference count, so
+        # NaN points are ignored.
+        better = obj[obj[:, 0] < rp[0], 0]
+        return float(rp[0] - better.min()) if better.size else 0.0
     return float(HV(ref_point=rp)(obj))
 
 
