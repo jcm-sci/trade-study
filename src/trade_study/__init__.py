@@ -33,7 +33,16 @@ from .fisher import (
     fisher_screen_counts,
     screen_fisher,
 )
-from .information import ModelInformation, TruthScore, model_information
+from .information import (
+    AdequateInformation,
+    InformationCurve,
+    InformationPoint,
+    ModelInformation,
+    TruthScore,
+    information_curve,
+    minimum_adequate_information,
+    model_information,
+)
 from .io import load_results, save_results
 from .paired import PairedDifference, paired_difference, paired_rank
 from .power import AdequateDesign, PowerCurve, minimum_adequate, power_curve
@@ -111,6 +120,7 @@ __all__ = [
     "AccrualPlan",
     "AdaptiveSession",
     "AdequateDesign",
+    "AdequateInformation",
     "Annotation",
     "ConfusionTable",
     "Constraint",
@@ -125,6 +135,8 @@ __all__ = [
     "FisherScreenResult",
     "FrozenCheckout",
     "GroupSequentialDesign",
+    "InformationCurve",
+    "InformationPoint",
     "ModelInformation",
     "Observable",
     "OperatingCharacteristics",
@@ -176,10 +188,12 @@ __all__ = [
     "freeze_checkout",
     "hypervolume",
     "igd_plus",
+    "information_curve",
     "load_result_bundle",
     "load_results",
     "max_events_for_power",
     "minimum_adequate",
+    "minimum_adequate_information",
     "model_information",
     "operating_characteristics",
     "paired_difference",

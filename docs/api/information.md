@@ -46,8 +46,48 @@ Conditions that the caller establishes:
 - The bound describes the simulated generating structures. It says nothing
   about the real data when none of the structures generated them.
 
+## Along a design size
+
+A design study needs the bound as a function of a size (units per cohort,
+sampling days, follow-up) and a rule that picks the smallest adequate size, as
+`power_curve` and `minimum_adequate` do for success indicators.
+`information_curve` reads raw replicate rows in which the generating structure
+is a configuration factor and the reader's log probability of it on a held-out
+replicate, `log q(truth | y)`, is an observable; `minimum_adequate_information`
+selects the smallest size that reaches a target in nats (or as a fraction of
+`H(M)`).
+
+```python
+curves = information_curve(rows, "log_score", truth="model", along="n_units",
+                           labels=["A", "B"], adjustment="bonferroni")
+minimum_adequate_information(curves, 0.5, fraction=True)
+```
+
+The conditions are those of `model_information`, per size: held-out
+replicates, independent, drawn with the declared frequencies, at least two per
+structure at every size. Scores must be finite and at most 0: a failed
+replicate is scored by the caller (for example with the log of the prior
+probability of its structure, zero information), never dropped. The probability
+floor is the caller's responsibility because the score is computed outside the
+library. As for power curves, the lower end of a marginal interval holds at the
+selected size only; `adjustment="bonferroni"` makes the statements across the
+scanned sizes simultaneous (approximately), and `monotone_above` reports a
+curve that dips below the target after the selection. A selected size is a
+statement about the simulated structures and the scanned grid; confirm it with
+fresh replicates at the selected size.
+
 ::: trade_study.ModelInformation
 
 ::: trade_study.TruthScore
 
 ::: trade_study.model_information
+
+::: trade_study.InformationPoint
+
+::: trade_study.InformationCurve
+
+::: trade_study.AdequateInformation
+
+::: trade_study.information_curve
+
+::: trade_study.minimum_adequate_information

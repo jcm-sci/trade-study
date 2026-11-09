@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Information curves along a design size (`information_curve`,
+  `InformationCurve`, `InformationPoint`) and the smallest size reaching a
+  target (`minimum_adequate_information`, `AdequateInformation`): the
+  stratified held-out bound of `model_information` per size from replicate
+  rows of log probabilities of the true structure, with optional Bonferroni
+  intervals, nats or a fraction of the prior entropy, and a `monotone_above`
+  flag. Non-finite or positive scores are refused (#240).
+
 - Held-out lower bound on the mutual information between the generating
   structure and the data (`model_information`, `ModelInformation`,
   `TruthScore`): a stratified estimate of `H(M) + E[log q(M | Y)]` from the
