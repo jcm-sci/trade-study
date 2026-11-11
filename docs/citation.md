@@ -9,13 +9,13 @@ If you use this package in your research, please cite:
   year = {2026},
   url = {https://github.com/jcm-sci/trade-study},
   version = {0.7.0},
-  doi = {10.5281/zenodo.19599838},
+  doi = {10.5281/zenodo.24143862},
 }
 ```
 
-The DOI above is the concept DOI, which resolves to the archive containing all
-package releases; the version DOI for release 0.7.0 is added once Zenodo mints
-it.
+The DOI above identifies release 0.7.0. Use the
+[concept DOI](https://doi.org/10.5281/zenodo.19599838) when citing the package
+independently of a specific release.
 
 Machine-readable citation metadata is available in
 [CITATION.cff](https://github.com/jcm-sci/trade-study/blob/main/CITATION.cff).

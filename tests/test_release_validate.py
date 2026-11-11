@@ -18,7 +18,7 @@ from scripts.release_validate import (
 
 
 def test_development_versions_match() -> None:
-    assert validate_development_metadata() == "0.7.0"
+    assert validate_development_metadata() == "0.8.0.dev0"
 
 
 def test_citation_tracks_latest_stable_release() -> None:

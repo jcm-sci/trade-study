@@ -253,8 +253,8 @@ existing results table through a validated surrogate.
 
 ## Release compatibility
 
-The latest stable PyPI release is 0.7.0. Interfaces on `main` after the 0.7.0
-tag may change before the next release.
+The latest stable PyPI release is 0.7.0. The `main` branch is the 0.8.0
+development line (`0.8.0.dev0`); its interfaces may change before the next release.
 
 Version 0.7.0 adds exact event-driven trial design (`trade_study.trials`,
 including the public `critical_count`), confusion tables for replicated
@@ -323,12 +323,12 @@ If you use this package in your research, please cite:
   year = {2026},
   url = {https://github.com/jcm-sci/trade-study},
   version = {0.7.0},
-  doi = {10.5281/zenodo.19599838},
+  doi = {10.5281/zenodo.24143862},
 }
 ```
 
-This is the concept DOI, which resolves to the archive containing all package
-releases; the version DOI for release 0.7.0 is added once Zenodo mints it.
+This DOI identifies release 0.7.0. The badge at the top of this page uses the
+concept DOI, which resolves to the archive containing all package releases.
 
 See [CITATION.cff](CITATION.cff) for machine-readable metadata.
 
