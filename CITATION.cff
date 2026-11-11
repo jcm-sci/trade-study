@@ -30,8 +30,11 @@ keywords:
 license: MIT
 version: "0.7.0"
 date-released: "2026-11-11"
-doi: "10.5281/zenodo.19599838"
+doi: "10.5281/zenodo.24143862"
 identifiers:
+  - type: doi
+    value: "10.5281/zenodo.24143862"
+    description: "Zenodo archive for release 0.7.0"
   - type: doi
     value: "10.5281/zenodo.19599838"
     description: "Zenodo archive containing all versions"

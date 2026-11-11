@@ -2,8 +2,8 @@
 
 !!! warning "Development documentation"
 
-    This site is built from `main`. Public interfaces may change between
-    releases. The latest stable package is
+    This site is built from `main`, currently the unreleased 0.8.0 development
+    line (`0.8.0.dev0`). Public interfaces may change before release. The latest stable package is
     [0.7.0 on PyPI](https://pypi.org/project/trade-study/0.7.0/); its source and
     README are preserved at the
     [v0.7.0 tag](https://github.com/jcm-sci/trade-study/tree/v0.7.0).
