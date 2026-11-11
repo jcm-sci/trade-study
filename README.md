@@ -253,13 +253,20 @@ existing results table through a validated surrogate.
 
 ## Release compatibility
 
-The latest stable PyPI release is 0.7.0. The `main` branch is the 0.8.0
-development line; its interfaces may change before the next release.
+The latest stable PyPI release is 0.7.0. Interfaces on `main` after the 0.7.0
+tag may change before the next release.
+
+Version 0.7.0 adds exact event-driven trial design (`trade_study.trials`,
+including the public `critical_count`), confusion tables for replicated
+recovery and discrimination studies, Monte Carlo power curves, a held-out
+lower bound on the mutual information between the generating structure and the
+data with information curves along a design size, analytic single-objective
+hypervolume, and qualification documentation; see the changelog for details.
 
 Version 0.6.0 added an experimental frozen Slurm launch layer with immutable
 task plans, completion receipts and accompanying documentation and scope
 corrections. The other interfaces described above span earlier releases and
-the current unreleased development line; see the changelog for their release
+later releases; see the changelog for their release
 history.
 
 Version 0.5.1 fixes score-unit sensitivity in `stack_scores` and prevents

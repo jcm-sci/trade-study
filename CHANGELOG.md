@@ -32,7 +32,8 @@ All notable changes to this project will be documented in this file.
 - Exact event-driven trial design (`trade_study.trials`): conditional-binomial
   efficacy intervals, event targets, fixed-duration power, Lan-DeMets
   group-sequential boundaries with non-binding futility and exact operating
-  characteristics, and calendar-time event accrual (#233).
+  characteristics, and calendar-time event accrual (#233). Critical counts are found by bisection and
+  unspent alpha carries forward to later looks (#237).
 
 - Confusion tables for replicated recovery and discrimination studies
   (`confusion_table`, `ConfusionTable`): counts of verdicts by truth with
@@ -80,8 +81,7 @@ All notable changes to this project will be documented in this file.
 - Record execution ownership, host-result boundaries, Fisher-screen integration
   requirements and separate qualification targets for penalized stacking and EVSI.
 
-- Mark `main` as the 0.7.0 development line (`0.7.0.dev0`), cite the 0.6.0
-  Zenodo DOI alongside the concept DOI, and add a private security policy.
+- Add a private security policy and release-metadata checks.
 - Derive CSTR and monitoring example seeds from a SHA-256 of the configuration
   instead of `hash()`, so regenerated figures do not depend on `PYTHONHASHSEED`.
 
