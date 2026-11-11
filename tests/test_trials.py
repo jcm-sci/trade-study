@@ -186,3 +186,20 @@ def test_critical_count_validates_arguments() -> None:
         critical_count(3.5)  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="confidence"):
         critical_count(10, confidence=1.0)
+
+
+@pytest.mark.parametrize(
+    ("total", "rho", "margin"),
+    [(30, 2.0, 0.0), (30, 0.5, 0.3), (50, 1.0, -0.2), (np.int64(40), 1.0, 0.3)],
+)
+def test_critical_count_other_ratios_margins_and_numpy_integers(
+    total: int, rho: float, margin: float
+) -> None:
+    k = critical_count(total, rho=rho, margin=margin)
+    assert k == critical_count(int(total), rho=rho, margin=margin)
+    if k >= 0:
+        assert efficacy_interval(k, int(total), rho=rho, margin=margin).success
+    if k < int(total):
+        assert not efficacy_interval(k + 1, int(total), rho=rho, margin=margin).success
+    with pytest.raises(ValueError, match="rho"):
+        critical_count(10, rho=0.0)
