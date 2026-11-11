@@ -253,9 +253,8 @@ existing results table through a validated surrogate.
 
 ## Release compatibility
 
-The `main` branch is the 0.7.0 development line (`0.7.0.dev0`). Its public
-Fisher-information, sensitivity, and decision-summary interfaces may change
-before the final 0.7.0 release. The latest stable PyPI release is 0.6.0.
+The latest stable PyPI release is 0.7.0. The `main` branch is the 0.8.0
+development line; its interfaces may change before the next release.
 
 Version 0.6.0 added an experimental frozen Slurm launch layer with immutable
 task plans, completion receipts and accompanying documentation and scope
@@ -316,13 +315,13 @@ If you use this package in your research, please cite:
   title = {{trade-study}: Multi-Objective Trade-Study Orchestration},
   year = {2026},
   url = {https://github.com/jcm-sci/trade-study},
-  version = {0.6.0},
-  doi = {10.5281/zenodo.23497881},
+  version = {0.7.0},
+  doi = {10.5281/zenodo.19599838},
 }
 ```
 
-This DOI identifies release 0.6.0. The badge at the top of this page uses the
-concept DOI, which resolves to the archive containing all package releases.
+This is the concept DOI, which resolves to the archive containing all package
+releases; the version DOI for release 0.7.0 is added once Zenodo mints it.
 
 See [CITATION.cff](CITATION.cff) for machine-readable metadata.
 

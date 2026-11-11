@@ -18,11 +18,11 @@ from scripts.release_validate import (
 
 
 def test_development_versions_match() -> None:
-    assert validate_development_metadata() == "0.7.0.dev0"
+    assert validate_development_metadata() == "0.7.0"
 
 
 def test_citation_tracks_latest_stable_release() -> None:
-    assert citation_version() == "0.6.0"
+    assert citation_version() == "0.7.0"
 
 
 @pytest.mark.parametrize("version", ["0.7.0.dev0", "0.7", "v0.7.0"])

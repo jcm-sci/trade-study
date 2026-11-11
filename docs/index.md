@@ -2,12 +2,11 @@
 
 !!! warning "Development documentation"
 
-    This site is built from `main`, currently the unreleased 0.7.0 development
-    line (`0.7.0.dev0`). Public interfaces may change before release. The latest
-    stable package is
-    [0.6.0 on PyPI](https://pypi.org/project/trade-study/0.6.0/); its source and
+    This site is built from `main`. Public interfaces may change between
+    releases. The latest stable package is
+    [0.7.0 on PyPI](https://pypi.org/project/trade-study/0.7.0/); its source and
     README are preserved at the
-    [v0.6.0 tag](https://github.com/jcm-sci/trade-study/tree/v0.6.0).
+    [v0.7.0 tag](https://github.com/jcm-sci/trade-study/tree/v0.7.0).
 
 `trade-study` runs replicated simulation studies and compares configurations
 against multiple objectives. It supports design grids, multi-fidelity phases,
