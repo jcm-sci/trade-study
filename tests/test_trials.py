@@ -12,6 +12,7 @@ from trade_study import (
     AccrualPlan,
     alpha_spending,
     conditional_power,
+    critical_count,
     design_group_sequential,
     efficacy_from_share,
     efficacy_interval,
@@ -161,3 +162,27 @@ def test_accrual_closed_form_and_ramp() -> None:
     assert np.all(np.diff(ramp) > 0)
     assert periods_to_events(ramp, ramp[5]) == pytest.approx(6.0)
     assert periods_to_events(ramp, 1e9) == math.inf
+
+
+def test_critical_count_is_the_success_boundary() -> None:
+    for total in (10, 40, 78):
+        k = critical_count(total, margin=0.3)
+        assert k >= 0
+        assert efficacy_interval(k, total, margin=0.3).success
+        assert not efficacy_interval(k + 1, total, margin=0.3).success
+        theta = efficacy_share(0.7, 1.0)
+        power = float(stats.binom.cdf(k, total, theta))
+        assert power == pytest.approx(conditional_power(total, 0.7, margin=0.3))
+    assert critical_count(2, margin=0.3) == -1
+    assert critical_count(0) == -1
+
+
+def test_critical_count_validates_arguments() -> None:
+    with pytest.raises(ValueError, match="total_events"):
+        critical_count(-1)
+    with pytest.raises(ValueError, match="total_events"):
+        critical_count(total_events=True)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="total_events"):
+        critical_count(3.5)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="confidence"):
+        critical_count(10, confidence=1.0)
