@@ -253,14 +253,20 @@ existing results table through a validated surrogate.
 
 ## Release compatibility
 
-The `main` branch is the 0.7.0 development line (`0.7.0.dev0`). Its public
-Fisher-information, sensitivity, and decision-summary interfaces may change
-before the final 0.7.0 release. The latest stable PyPI release is 0.6.0.
+The latest stable PyPI release is 0.7.0. Interfaces on `main` after the 0.7.0
+tag may change before the next release.
+
+Version 0.7.0 adds exact event-driven trial design (`trade_study.trials`,
+including the public `critical_count`), confusion tables for replicated
+recovery and discrimination studies, Monte Carlo power curves, a held-out
+lower bound on the mutual information between the generating structure and the
+data with information curves along a design size, analytic single-objective
+hypervolume, and qualification documentation; see the changelog for details.
 
 Version 0.6.0 added an experimental frozen Slurm launch layer with immutable
 task plans, completion receipts and accompanying documentation and scope
 corrections. The other interfaces described above span earlier releases and
-the current unreleased development line; see the changelog for their release
+later releases; see the changelog for their release
 history.
 
 Version 0.5.1 fixes score-unit sensitivity in `stack_scores` and prevents
@@ -316,13 +322,13 @@ If you use this package in your research, please cite:
   title = {{trade-study}: Multi-Objective Trade-Study Orchestration},
   year = {2026},
   url = {https://github.com/jcm-sci/trade-study},
-  version = {0.6.0},
-  doi = {10.5281/zenodo.23497881},
+  version = {0.7.0},
+  doi = {10.5281/zenodo.19599838},
 }
 ```
 
-This DOI identifies release 0.6.0. The badge at the top of this page uses the
-concept DOI, which resolves to the archive containing all package releases.
+This is the concept DOI, which resolves to the archive containing all package
+releases; the version DOI for release 0.7.0 is added once Zenodo mints it.
 
 See [CITATION.cff](CITATION.cff) for machine-readable metadata.
 
