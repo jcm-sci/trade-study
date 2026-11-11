@@ -189,6 +189,52 @@ def _critical(total: int, rho: float, margin: float, confidence: float) -> int:
     return lo
 
 
+def critical_count(
+    total_events: int,
+    *,
+    rho: float = 1.0,
+    margin: float = 0.0,
+    confidence: float = 0.95,
+) -> int:
+    """Largest treatment-arm event count at which the success rule holds.
+
+    The rule is the exact conditional-binomial efficacy interval of
+    `efficacy_interval`: success means the lower bound exceeds ``margin``.
+    Success is monotone in the count (the lower bound falls as the treatment
+    count rises), so the boundary is a single integer.
+
+    Args:
+        total_events: Total events ``D``.
+        rho: Treatment-to-control person-time ratio.
+        margin: Null efficacy margin.
+        confidence: Two-sided confidence level.
+
+    Returns:
+        The largest count ``k`` in ``0..D`` that succeeds, or ``-1`` if none does.
+
+    Raises:
+        ValueError: If ``total_events`` is not a nonnegative integer or an
+            argument is invalid for `efficacy_interval`.
+
+    Examples:
+        >>> critical_count(78, margin=0.3)
+        23
+        >>> critical_count(2, margin=0.3)
+        -1
+    """
+    if isinstance(total_events, bool) or not isinstance(total_events, int | np.integer):
+        msg = "total_events must be a nonnegative integer"
+        raise ValueError(msg)  # ruff: ignore[type-check-without-type-error] - value contract
+    if total_events < 0:
+        msg = "total_events must be a nonnegative integer"
+        raise ValueError(msg)
+    # Validates rho, margin and confidence through the interval itself.
+    efficacy_interval(
+        0, int(total_events), rho=rho, margin=margin, confidence=confidence
+    )
+    return _critical(int(total_events), rho, margin, confidence)
+
+
 def conditional_power(
     total_events: int,
     efficacy: float,

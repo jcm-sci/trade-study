@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Public `critical_count`: the largest treatment-arm event count at which the
+  exact conditional-binomial success rule holds (or `-1`), the boundary that
+  `conditional_power` and `events_required` already used through a private
+  helper (#243).
+
 - Information curves along a design size (`information_curve`,
   `InformationCurve`, `InformationPoint`) and the smallest size reaching a
   target (`minimum_adequate_information`, `AdequateInformation`): the

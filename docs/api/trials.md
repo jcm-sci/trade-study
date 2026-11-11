@@ -51,6 +51,8 @@ All functions require SciPy (`trade-study[stats]`).
 
 ::: trade_study.efficacy_interval
 
+::: trade_study.critical_count
+
 ::: trade_study.conditional_power
 
 ::: trade_study.events_required
